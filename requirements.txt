@@ -3,3 +3,4 @@ pandas
 xlsxwriter
 streamlit-lottie
 requests
+openpyxl
