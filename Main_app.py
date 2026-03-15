@@ -2,15 +2,16 @@ import streamlit as st
 from streamlit_lottie import st_lottie
 import time
 
-# --- CONFIGURATION ---
+# --- 1. CONFIGURATION ---
 st.set_page_config(page_title="AERO-SYNCH Enterprise", page_icon="✈️", layout="wide")
 
 if 'logged_in' not in st.session_state:
     st.session_state['logged_in'] = False
 
-# --- ANIMASI LOGIN ---
+# --- 2. ANIMASI LOGIN ---
 airplane_anim = {"v": "5.5.7", "fr": 30, "ip": 0, "op": 60, "w": 200, "h": 200, "nm": "Plane", "ddd": 0, "assets": [], "layers": [{"ddd": 0, "ind": 1, "ty": 4, "nm": "PlaneBody", "sr": 1, "ks": {"o": {"a": 0, "k": 100}, "p": {"a": 1, "k": [{"t": 0, "s": [-100, 100], "h": 1}, {"t": 60, "s": [300, 100], "h": 1}]}, "s": {"a": 0, "k": [100, 100]}}, "shapes": [{"ty": "gr", "it": [{"ty": "rc", "s": {"a": 0, "k": [50, 15]}, "p": {"a": 0, "k": [0, 0]}, "nm": "Body"}, {"ty": "fl", "c": {"a": 0, "k": [0.1, 0.5, 0.9, 1]}}]}]}]}
 
+# --- 3. TAMPILAN INTERFACE ---
 if not st.session_state['logged_in']:
     st.markdown("<style>[data-testid='stSidebar'] { display: none; }</style>", unsafe_allow_html=True)
     st_lottie(airplane_anim, speed=1, height=180, key="login_anim")
@@ -28,7 +29,8 @@ if not st.session_state['logged_in']:
                 else:
                     st.error("Invalid ID or Password.")
 else:
-    # --- DEFINISI NAVIGASI ---
+    # --- 4. NAVIGASI (SOLUSI UNABLE TO CREATE PAGE) ---
+    # Pastikan nama file di folder pages Bapak SAMA PERSIS dengan teks di bawah ini
     pages = [
         st.Page("pages/1_📝_Tech_Log_Entry.py", title="Tech Log Entry", icon="📝"),
         st.Page("pages/2_📊_Utilization_Dashboard.py", title="Utilization Dashboard", icon="📊"),
