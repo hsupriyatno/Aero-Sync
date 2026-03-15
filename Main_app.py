@@ -25,7 +25,7 @@ if not st.session_state['logged_in']:
                     st.error("Invalid ID or Password.")
 else:
     # --- NAVIGASI ---
-    pages = [
+pages = [
         st.Page("pages/1_📝_Tech_Log_Entry.py", title="Tech Log Entry", icon="📝"),
         st.Page("pages/2_📊_Utilization_Dashboard.py", title="Utilization Dashboard", icon="📊"),
         st.Page("pages/3_🛠️_Pirep_Marep_History.py", title="Pirep/Marep History", icon="🛠️"),
