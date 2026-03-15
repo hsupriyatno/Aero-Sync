@@ -1,0 +1,7 @@
+streamlit
+pandas
+xlsxwriter
+streamlit-lottie
+requests
+openpyxl
+plotly
