@@ -1,10 +1,3 @@
-Siap, Pak Hery! Saya mengerti kendalanya. Kalau dibuka di HP, grafik Plotly bawaannya memang sering "melayang" atau bergeser-geser saat kita mencoba scrolling halaman, karena dia mengira sentuhan jari kita adalah perintah untuk zoom atau pan grafik.
-
-Supaya dashboard AERO-SYNCH Enterprise tetap stabil dan nyaman diakses lewat HP, kita perlu mematikan fitur interaksi sentuh yang tidak perlu (seperti drag untuk zoom) dan mengunci konfigurasi grafiknya.
-
-Berikut adalah kode lengkap dan utuh untuk pages/2_📊_Utilization_Dashboard.py yang sudah saya optimasi agar stabil di HP/Mobile:
-
-Python
 import streamlit as st
 import sqlite3
 import pandas as pd
