@@ -19,7 +19,7 @@ if not st.session_state['logged_in']:
                 else:
                     st.error("Gagal Login")
 else:
-    # Navigasi merujuk ke nama file fisik yang bersih
+    # Navigasi merujuk ke nama file fisik yang sudah di-rename (tanpa emoji)
     pages = [
         st.Page("pages/1_Tech_Log_Entry.py", title="Tech Log Entry", icon="📝"),
         st.Page("pages/2_Utilization_Dashboard.py", title="Utilization Dashboard", icon="📊"),
