@@ -1,1 +1,2 @@
 xlsxwriter
+streamlit-option-menu
