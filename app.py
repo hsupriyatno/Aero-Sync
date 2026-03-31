@@ -9,10 +9,10 @@ import views.inventory as inventory
 import views.rcpm as rcpm
 import views.procurement as procurement
 
+st.set_page_config(page_title="AERO-SYNCH ERP", layout="wide")
+
 # 1. Inisialisasi Database
 init_db()
-
-st.set_page_config(page_title="AERO-SYNCH ERP", layout="wide")
 
 # 2. CSS untuk menyembunyikan elemen bawaan Streamlit
 st.markdown("""
