@@ -9,16 +9,36 @@ import views.inventory as inventory
 import views.rcpm as rcpm
 import views.procurement as procurement
 
-st.set_page_config(page_title="AERO-SYNCH ERP", layout="wide")
+st.set_page_config(
+    page_title="AERO-SYNCH ERP",
+    layout="wide",
+    initial_sidebar_state="expanded" # Pastikan ini "expanded" bukan "collapsed"
+)
 
 # 1. Inisialisasi Database
 init_db()
 
-# 2. CSS untuk menyembunyikan elemen bawaan Streamlit
+
+# 2. CSS untuk menyembunyikan elemen bawaan Streamlit secara aman
 st.markdown("""
     <style>
+        /* Mengatur jarak konten agar tidak terlalu menempel ke atas */
         .block-container { padding-top: 2rem; }
-        header { visibility: hidden; }
+        
+        /* Menyembunyikan bar header tanpa menghilangkan tombol sidebar */
+        header[data-testid="stHeader"] {
+            background-color: rgba(0,0,0,0);
+            border-bottom: none;
+            z-index: 1;
+        }
+        
+        /* Memastikan tombol panah (chevron) sidebar tetap terlihat */
+        [data-testid="stSidebarCollapseButton"] {
+            visibility: visible !important;
+            background-color: transparent !important;
+        }
+
+        /* Menyembunyikan navigasi default Streamlit di sidebar */
         [data-testid="stSidebarNav"] { display: none; }
     </style>
     """, unsafe_allow_html=True)

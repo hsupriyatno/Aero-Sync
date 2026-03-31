@@ -1,2 +1,5 @@
+streamlit
+pandas
 xlsxwriter
-streamlit-option-menu
+openpyxl
+streamlit-option-menu.
