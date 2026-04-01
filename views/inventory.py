@@ -3,8 +3,7 @@ from database import create_connection
 import datetime
 import pandas as pd
 import io
-from fpdf import FPDF
-
+from fpdf2 import FPDF
 # --- FUNGSI GENERATE NOMOR GRN ---
 def generate_grn_number():
     conn = create_connection()
