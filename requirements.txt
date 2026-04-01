@@ -3,3 +3,4 @@ pandas
 xlsxwriter
 openpyxl
 streamlit-option-menu
+fpdf2
