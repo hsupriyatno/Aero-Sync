@@ -9,6 +9,7 @@ import views.inventory as inventory
 import views.rcpm as rcpm
 import views.procurement as procurement
 import datetime
+from views import catalog, initial_install
 
 # 1. Konfigurasi Halaman
 st.set_page_config(
@@ -20,16 +21,36 @@ st.set_page_config(
 # 2. Inisialisasi Database
 init_db()
 
-# 3. CSS Custom
+# Inject CSS untuk memperbaiki posisi judul agar tidak hilang
 st.markdown("""
     <style>
-        .block-container { padding-top: 2rem; }
-        header[data-testid="stHeader"] { background-color: rgba(0,0,0,0); z-index: 1; }
-        [data-testid="stSidebarNav"] { display: none; }
+    /* Menghilangkan padding default Streamlit di bagian atas */
+    .block-container {
+        padding-top: 1.5rem !important; /* Kita beri sedikit napas agar tidak amblas */
+        padding-bottom: 0rem !important;
+    }
+    
+    /* Mengatur judul utama agar proporsional */
+    .main-title { 
+        font-size: 26px !important; 
+        font-weight: bold; 
+        color: #1E3A8A; 
+        margin-top: 0px; /* Kita set ke 0 dulu supaya dia muncul kembali */
+        margin-bottom: 5px;
+        padding-top: 0px;
+    }
+    
+    .small-font { font-size:20px !important; font-weight: bold; color: #1E3A8A; }
+    .section-font { font-size:16px !important; font-weight: bold; margin-top: 5px; }
+    
+    /* Tambahan untuk menghilangkan spasi extra dari header default st */
+    header {visibility: hidden;} 
+    footer {visibility: hidden;}
     </style>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-st.title("✈️ Aircraft Engineering Reliability & Planning System (ERP)")
+# Pastikan class nya sesuai
+st.markdown('<p class="main-title">✈️ Aircraft Engineering, Reliability & Planning</p>', unsafe_allow_html=True)
 
 # 4. LOGIKA NAVIGASI
 if 'page' not in st.session_state:
@@ -51,7 +72,7 @@ def get_index(options, current_page):
         return 0
 
 # 5. DEFINISI MENU (Sangat Penting: Harus di atas sebelum dipanggil selectbox)
-cat_opts = ["", "Aircraft Catalog", "Structure Management"]
+cat_opts = ["", "Aircraft Catalog", "Structure Management", "Initial Component Installed"]
 maint_opts = ["", "AML Entry", "Maintenance Package"]
 status_opts = ["", "Aircraft Utilization Record", "Airworthiness Directive Status", "Service Bulletin Status"]
 eng_opts = ["", "Engineering Order", "Engineering Evaluation", "Deferred Defect"]
@@ -90,6 +111,8 @@ page = st.session_state.page
 
 if page == "Dashboard":
     dashboard.show()
+elif page == "Initial Component Installed":
+    initial_install.show()
 elif page in cat_opts:
     catalog.show(page)
 elif page in maint_opts:
