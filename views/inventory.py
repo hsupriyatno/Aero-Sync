@@ -59,6 +59,8 @@ def show(page_name):
         df_master_sn = pd.DataFrame()
     finally:
         conn.close()
+    
+    conn = create_connection()
 
     # ==========================================
     # HALAMAN: PARTS CATALOG
@@ -112,8 +114,44 @@ def show(page_name):
                         st.rerun()
                     except Exception as e:
                         st.error(f"Database Error: {e}")
-                    finally:
-                        conn.close()
+
+    
+        with tab_sn:
+            st.subheader("🆔 Master Serial Number")
+            try:
+                # Ambil data dari database
+                df_sn = pd.read_sql("SELECT * FROM master_serial_number", conn)
+        
+                if df_sn.empty:
+                    st.info("Belum ada Serial Number yang terdaftar di database.")
+                else:
+                    # Tampilkan tabel data
+                    st.dataframe(df_sn, use_container_width=True)
+            
+            except Exception as e:
+                st.error(f"⚠️ Gagal memuat data Master Serial Number: {e}")
+        
+                # Tombol Darurat untuk membuat tabel jika hilang
+                if st.button("Fix & Create Serial Number Table"):
+                    curr = conn.cursor()
+                    curr.execute('''
+                        CREATE TABLE IF NOT EXISTS master_serial_number (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            part_number TEXT,
+                            serial_number TEXT,
+                            description TEXT,
+                            status TEXT,
+                            current_location TEXT,
+                            location TEXT,
+                            tsn REAL DEFAULT 0,
+                            csn INTEGER DEFAULT 0,
+                            tso REAL DEFAULT 0,
+                            cso INTEGER DEFAULT 0
+                        )
+                    ''')
+                    conn.commit()
+                    st.success("Tabel berhasil dibuat! Silakan refresh halaman.")
+                    st.rerun()  
 
     # ==========================================
     # HALAMAN: INCOMING/OUTGOING
