@@ -114,8 +114,6 @@ def show(page_name):
                         st.rerun()
                     except Exception as e:
                         st.error(f"Database Error: {e}")
-
-    
         with tab_sn:
             st.subheader("🆔 Master Serial Number")
             try:
