@@ -1,9 +1,25 @@
 import sqlite3
 import os
 
+import sqlite3
+import os
+
 def create_connection():
-    db_path = r"C:\DATA\01. RELIABILITY PROJECT\DATABASE PROJECT\AERO-SYNCH\aircraft.db"
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    # 1. Cek apakah sedang di laptop Bapak (Windows)
+    local_path = r"C:\DATA\01. RELIABILITY PROJECT\DATABASE PROJECT\AERO-SYNCH\aircraft.db"
+    
+    if os.path.exists(os.path.dirname(local_path)):
+        # Jika folder C:\DATA... ada, gunakan path tersebut
+        db_path = local_path
+    else:
+        # 2. Jika di Cloud, gunakan folder project saat ini
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        db_path = os.path.join(base_dir, "aircraft.db")
+    
+    # Buat folder jika belum ada (hanya untuk path relatif)
+    if not os.path.exists(os.path.dirname(db_path)):
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        
     return sqlite3.connect(db_path, check_same_thread=False)
 
 def init_db():
