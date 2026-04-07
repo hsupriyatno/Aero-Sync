@@ -1,98 +1,198 @@
 import streamlit as st
 import pandas as pd
+import graphviz
 from database import create_connection
 
-def show(Catalog):
-    # GUNAKAN 'if' UNTUK KONDISI PERTAMA
-    if page_name == "Catalog":
-        st.subheader("Add New Aircraft")
+def show(page_name):
+    # Inject CSS untuk mengecilkan semua judul utama secara global
+    st.markdown("""
+        <style>
+        .small-font { font-size:24px !important; font-weight: bold; color: #1E3A8A; }
+        .section-font { font-size:20px !important; font-weight: bold; margin-top: 10px; }
+        </style>
+    """, unsafe_allow_html=True)
 
-# 1. AIRCRAFT CATALOG
-    elif current_page == "Catalog":
-        st.subheader("Add New Aircraft")
+    conn = create_connection()
     
-        with st.form("form_aircraft"):
-            col1, col2 = st.columns(2)
-            with col1:
-                reg = st.text_input("Registration (e.g. PK-OFI)")
-                ac_type = st.selectbox("Type", ["B737-8", "DHC6-300", "DHC6-400", "Bell 412", "AS350B3", "MIL171"])
-                msn = st.text_input("Manufacturer Serial Number (MSN)")
-                tsn = st.number_input("Total Time Since New (Aircraft)", min_value=0.0)
-                csn = st.number_input("Total Cycles Since New (Aircraft)", min_value=0)
-            with col2:
-                tsn_e1 = st.number_input("Total Time Since New (Engine 1)", min_value=0.0)
-                csn_e1 = st.number_input("Total Cycles Since New (Engine 1)", min_value=0)
-                tsn_e2 = st.number_input("Total Time Since New (Engine 2)", min_value=0.0)
-                csn_e2 = st.number_input("Total Cycles Since New (Engine 2)", min_value=0)
-                entry_date = st.date_input("Date Enter to Airfast")
+    try:
+        # === HALAMAN 1: AIRCRAFT CATALOG ===
+        if page_name == "Aircraft Catalog":
+            st.header("✈️ Aircraft Catalog")
             
-            submit = st.form_submit_button("Simpan Pesawat")
-        
-            if submit:
-                conn = create_connection()
-                curr = conn.cursor()
-                try:
-                    curr.execute('''INSERT INTO catalog (ac_reg, ac_type, msn, tsn, csn, tsn_e1, csn_e1, tsn_e2, csn_e2, entry_date) 
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', (reg, ac_type, msn, tsn, csn, tsn_e1, csn_e1, tsn_e2, csn_e2, entry_date))
+            # Form Input Pesawat Baru
+            with st.form("form_catalog"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    ac_reg = st.text_input("Aircraft Registration", placeholder="PK-ABC")
+                    ac_type = st.selectbox("Aircraft Type", ["DHC6-300", "DHC6-400", "B737-800", "B737-MAX", "BELL 412"])
+                    msn = st.text_input("MSN (Manufacturer Serial Number)")
+                with col2:
+                    tsn = st.number_input("Total Airframe Hours (TSN)", min_value=0.0)
+                    csn = st.number_input("Total Airframe Cycles (CSN)", min_value=0)
+                    entry_date = st.date_input("Entry into Service Date")
+
+                if st.form_submit_button("Register Aircraft"):
+                    curr = conn.cursor()
+                    curr.execute('''INSERT INTO catalog (ac_reg, ac_type, msn, tsn, csn, entry_date)
+                                 VALUES (?, ?, ?, ?, ?, ?)''', 
+                                 (ac_reg, ac_type, msn, tsn, csn, str(entry_date)))
                     conn.commit()
-                    st.success(f"Pesawat {reg} berhasil didaftarkan!")
-                except Exception as e:
-                    st.error(f"Gagal simpan: {e}")
-                conn.close()
+                    st.success(f"Aircraft {ac_reg} registered successfully!")
+                    st.rerun()
 
-        st.divider()
-        st.subheader("Current Fleet List")
-        conn = create_connection()
-        df = pd.read_sql_query("SELECT * FROM aircraft_catalog", conn)
-        st.dataframe(df, use_container_width=True)
-        conn.close()
-
-# 2. STRUCTURE MANAGEMENT
-    elif current_page == "Structure Management":
-        st.subheader("Manage Aircraft Structure & Components")
-
-        conn = create_connection()
-        df_ac = pd.read_sql_query("SELECT id, ac_reg FROM aircraft_catalog", conn)
-    
-        if df_ac.empty:
-            st.warning("Mohon daftarkan pesawat di menu 'Catalog' terlebih dahulu.")
-        else:
-            ac_options = {row['ac_reg']: row['id'] for index, row in df_ac.iterrows()}
-            selected_ac_reg = st.selectbox("Pilih Pesawat", list(ac_options.keys()))
-            selected_ac_id = ac_options[selected_ac_reg]
-
-            with st.expander("➕ Tambah Komponen Baru"):
-                with st.form("form_component"):
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        p_n = st.text_input("Part Number (P/N)")
-                        s_n = st.text_input("Serial Number (S/N)")
-                        desc = st.text_input("Description")
-                    with col2:
-                        tsn_c = st.number_input("Component TSN", min_value=0.0)
-                        csn_c = st.number_input("Component CSN", min_value=0)
-                    
-                        df_p = pd.read_sql_query(f"SELECT id, description FROM aircraft_structure WHERE ac_id = {selected_ac_id}", conn)
-                        parent_options = {"None (Top Level)": None}
-                        for _, r in df_p.iterrows():
-                            parent_options[r['description']] = r['id']
-                    
-                        selected_parent = st.selectbox("Parent Component", list(parent_options.keys()))
-
-                    submit_comp = st.form_submit_button("Install Component")
-                
-                    if submit_comp:
-                        curr = conn.cursor()
-                        parent_id = parent_options[selected_parent]
-                        curr.execute('''INSERT INTO aircraft_structure 
-                                 (ac_id, parent_id, part_number, serial_number, description, tsn, csn) 
-                                 VALUES (?, ?, ?, ?, ?, ?, ?)''', 
-                                 (selected_ac_id, parent_id, p_n, s_n, desc, tsn_c, csn_c))
-                        conn.commit()
-                        st.success(f"Komponen {desc} berhasil dipasang!")
-
+            # Tampilkan Daftar Pesawat yang Ada
             st.divider()
-            st.subheader(f"Component List for {selected_ac_reg}")
-            df_struct = pd.read_sql_query(f"SELECT id, parent_id, description, part_number, serial_number, tsn FROM aircraft_structure WHERE ac_id = {selected_ac_id}", conn)
-            st.dataframe(df_struct, use_container_width=True)
+            df_list = pd.read_sql_query("SELECT ac_reg, ac_type, msn, tsn, csn FROM catalog", conn)
+            if not df_list.empty:
+                st.subheader("Registered Fleet")
+                st.dataframe(df_list, use_container_width=True)    
+            else:
+                st.info("No aircraft registered yet.")
+
+        if page_name == "Structure Management":
+            st.header("🏗️ Aircraft Structure Management")
+            
+            # 1. Ambil data tipe pesawat untuk filter
+            df_ac = pd.read_sql_query("SELECT DISTINCT ac_type FROM catalog", conn)
+            
+            if df_ac.empty:
+                st.warning("Daftarkan pesawat di Aircraft Catalog terlebih dahulu.")
+                return
+
+            selected_type = st.selectbox("Pilih Aircraft Type", df_ac['ac_type'])
+
+            # 2. Ambil data Master Part Number untuk Dropdown Parent & Component
+            df_parts = pd.read_sql_query("SELECT part_number, description FROM master_part_number", conn)
+            
+            if df_parts.empty:
+                st.error("Master Part Number masih kosong! Isi data di menu Inventory dulu.")
+                part_options = []
+            else:
+                part_options = (df_parts['part_number'] + " - " + df_parts['description']).tolist()
+
+            # --- 3. Form Input Struktur ---
+            with st.form("form_structure"):
+                st.markdown(f'<p class="section-font">Add Component for {selected_type}</p>', unsafe_allow_html=True)
+                col1, col2 = st.columns(2)
+                
+                # Ambil data Master Part Number lengkap (termasuk ATA Chapter)
+                df_parts = pd.read_sql_query("SELECT part_number, description, ata_chapter FROM master_part_number", conn)
+                
+                if not df_parts.empty:
+                    # Buat mapping Dictionary untuk lookup ATA Chapter otomatis
+                    ata_mapping = dict(zip(df_parts['part_number'], df_parts['ata_chapter']))
+                    part_options = (df_parts['part_number'] + " - " + df_parts['description']).tolist()
+                else:
+                    ata_mapping = {}
+                    part_options = []
+
+                with col1:
+                    parent_list = ["Airframe"] + part_options
+                    p_raw = st.selectbox("Installed to (Parent)", parent_list)
+                    
+                    # Kita gunakan index untuk mendeteksi perubahan pilihan komponen
+                    c_raw = st.selectbox("Component (Child)", part_options)
+                
+                with col2:
+                    # LOGIKA OTOMATIS: Ambil ATA dari mapping berdasarkan PN yang dipilih
+                    selected_pn = c_raw.split(" - ")[0] if c_raw else ""
+                    auto_ata = ata_mapping.get(selected_pn, "") # Ambil dari DB, default kosong jika tidak ada
+                    
+                    ata = st.text_input("ATA Chapter", value=auto_ata, placeholder="e.g. 21-10-00")
+                    qty = st.number_input("Required Qty", min_value=1, value=1)
+
+                if st.form_submit_button("Submit Structure"):
+                    # ... (logika submit tetap sama)
+                    p_pn = p_raw.split(" - ")[0] if " - " in p_raw else p_raw
+                    c_pn = c_raw.split(" - ")[0]
+                    curr = conn.cursor()
+                    curr.execute('''INSERT INTO aircraft_structure 
+                                 (ac_type, parent_component, sub_component, ata_chapter, required_qty)
+                                 VALUES (?, ?, ?, ?, ?)''', (selected_type, p_pn, c_pn, ata, qty))
+                    conn.commit()
+                    st.success("Structure updated!")
+                    st.rerun()
+
+            # 4. Ambil data untuk Visualisasi (Keluar dari blok form)
+            st.divider()
+            st.subheader(f"Visual Hierarchy: {selected_type}")
+            
+            query_view = f"""
+                SELECT parent_component as Parent, sub_component as Component, 
+                       ata_chapter as ATA, required_qty as Qty 
+                FROM aircraft_structure 
+                WHERE ac_type = '{selected_type}'
+            """
+            df_view = pd.read_sql_query(query_view, conn)
+
+            if not df_view.empty:
+                dot = graphviz.Digraph()
+                dot.attr(rankdir='LR')
+                dot.attr('node', shape='record', style='filled', fontname='Arial', fontsize='10')
+
+                for _, row in df_view.iterrows():
+                    p, c, a, q = str(row['Parent']), str(row['Component']), str(row['ATA']), str(row['Qty'])
+                    
+                    # Gambar Node Parent jika Airframe
+                    if p.lower() == 'airframe':
+                        dot.node(p, fillcolor='#FFD700', label=f"{{ {p} }}")
+                    
+                    # Node Component
+                    node_label = f"{{ {c} | {{ ATA: {a} | Qty: {q} }} }}"
+                    color = '#ADD8E6' if p.lower() == 'airframe' else '#E0FFE0'
+                    dot.node(c, fillcolor=color, label=node_label)
+                    
+                    dot.edge(p, c)
+
+                st.graphviz_chart(dot)
+            else:
+                st.info(f"Belum ada data struktur untuk {selected_type}.")
+
+            # --- 5. EDIT & DELETE SECTION ---
+            st.divider()
+            st.subheader("📋 Manage Existing Structure")
+            
+            if not df_view.empty:
+                # Kita ambil ID asli dari database agar bisa di-delete/update
+                df_manage = pd.read_sql_query(f"""
+                    SELECT id, parent_component, sub_component, ata_chapter, required_qty 
+                    FROM aircraft_structure WHERE ac_type = '{selected_type}'
+                """, conn)
+
+                for _, row in df_manage.iterrows():
+                    with st.expander(f"⚙️ {row['sub_component']} (Parent: {row['parent_component']})"):
+                        edit_col1, edit_col2 = st.columns(2)
+                        
+                        # Form Edit Mini
+                        with edit_col1:
+                            new_ata = st.text_input("Edit ATA", value=row['ata_chapter'], key=f"ata_{row['id']}")
+                            new_qty = st.number_input("Edit Qty", min_value=1, value=int(row['required_qty']), key=f"qty_{row['id']}")
+                        
+                        with edit_col2:
+                            st.write("Action:")
+                            # Tombol Update
+                            if st.button("Update Data", key=f"upd_{row['id']}", use_container_width=True):
+                                curr = conn.cursor()
+                                curr.execute("""
+                                    UPDATE aircraft_structure 
+                                    SET ata_chapter = ?, required_qty = ? 
+                                    WHERE id = ?
+                                """, (new_ata, new_qty, row['id']))
+                                conn.commit()
+                                st.success("Updated!")
+                                st.rerun()
+                            
+                            # Tombol Delete dengan warna merah
+                            if st.button("🗑️ Delete Component", key=f"del_{row['id']}", type="secondary", use_container_width=True):
+                                curr = conn.cursor()
+                                curr.execute("DELETE FROM aircraft_structure WHERE id = ?", (row['id'],))
+                                conn.commit()
+                                st.warning("Component Deleted!")
+                                st.rerun()
+            else:
+                st.info("No data available to manage.")
+
+    except Exception as e:
+        st.error(f"Error: {e}")
+    finally:
         conn.close()
