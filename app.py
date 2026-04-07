@@ -44,7 +44,10 @@ st.markdown("""
     .section-font { font-size:16px !important; font-weight: bold; margin-top: 5px; }
     
     /* Tambahan untuk menghilangkan spasi extra dari header default st */
-    header {visibility: hidden;} 
+    header[data-testid="stHeader"] {
+        background-color: rgba(0,0,0,0); /* Transparan saja */
+        color: white;
+    }
     footer {visibility: hidden;}
     </style>
 """, unsafe_allow_html=True)
