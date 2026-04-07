@@ -77,23 +77,13 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         grn_number TEXT, date_created TEXT, part_number TEXT, serial_number TEXT)''')
 
-    # 8. MASTER SERIAL NUMBER (Status tiap unit barang)
-    curr.execute('''CREATE TABLE IF NOT EXISTS master_serial_number (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        part_number TEXT, serial_number TEXT,
-        tsn REAL, csn INTEGER, dsn INTEGER,
-        tso REAL, cso INTEGER, dso INTEGER,
-        status TEXT, current_location TEXT, location TEXT, date_registered TEXT,
-        UNIQUE(part_number, serial_number),
-        FOREIGN KEY (part_number) REFERENCES master_part_number (part_number))''')
-
-    # 9. TRANSACTION (Movement Control / Stock History)
+    # 8. TRANSACTION (Movement Control / Stock History)
     curr.execute('''CREATE TABLE IF NOT EXISTS inventory_transaction (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         date TEXT, doc_number TEXT, part_number TEXT, serial_number TEXT,
         store_location TEXT, issued_to TEXT, received_from TEXT, status TEXT, remark TEXT)''')
 
-    # 10. INSTALLED COMPONENTS (Apa yang nempel di pesawat saat ini)
+    # 9. INSTALLED COMPONENTS (Apa yang nempel di pesawat saat ini)
     curr.execute('''CREATE TABLE IF NOT EXISTS installed_components (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ac_reg TEXT, parent_sn TEXT, component_name TEXT,
