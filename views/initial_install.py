@@ -99,11 +99,12 @@ def show():
 
     st.divider()
 
-    # 3. Form Entry
+# 3. Form Entry
     if st.session_state.get('show_form'):
         with st.form("form_install"):
             st.subheader(f"📝 Install: {st.session_state.target_comp}")
             
+            # --- LOGIKA PENENTUAN PARENT ---
             if st.session_state.target_parent.lower() == "airframe":
                 parent_options = ["Airframe"]
             else:
@@ -115,31 +116,75 @@ def show():
             sel_parent = st.selectbox("Select Parent S/N", parent_options)
             final_p_sn = sel_parent.split(" (")[0]
 
-            c1, c2, c3 = st.columns(3)
+            st.divider()
+            
+            # --- PENGUNCIAN KE MASTER DATA ---
+            c1, c2 = st.columns(2)
+            
+            # Ambil List P/N dari Master
+            df_master_pn = pd.read_sql("SELECT part_number, description FROM master_part_number", conn)
+            pn_list = df_master_pn['part_number'].tolist()
+            
             with c1:
+                # User dipaksa pilih P/N yang sudah ada di Master
+                selected_pn = st.selectbox("Part Number", options=["-- Pilih P/N --"] + pn_list)
+                
+                # S/N difilter berdasarkan P/N yang dipilih
+                sn_options = []
+                if selected_pn != "-- Pilih P/N --":
+                    # Hanya S/N yang ada di gudang (Store) yang bisa diinstall
+                    query_sn = "SELECT serial_number FROM master_serial_number WHERE part_number = ? AND current_location = 'Store'"
+                    df_master_sn = pd.read_sql(query_sn, conn, params=(selected_pn,))
+                    sn_options = df_master_sn['serial_number'].tolist()
+                
+                selected_sn = st.selectbox("Serial Number", options=["-- Pilih S/N --"] + sn_options)
                 pos = st.selectbox("Position", ["LH", "RH", "CTR", "NO.1", "NO.2", "ONLY"])
-                pn = st.text_input("Part Number")
-                sn = st.text_input("Serial Number")
+
             with c2:
-                tbo = st.number_input("TBO", min_value=0, step=1)
+                # Tampilkan Deskripsi Otomatis (Akan masuk ke component_name di database)
+                comp_desc = ""
+                if selected_pn != "-- Pilih P/N --":
+                    comp_desc = df_master_pn[df_master_pn['part_number'] == selected_pn]['description'].values[0]
+                
+                # Kita tampilkan saja, tidak perlu diinput lagi
+                st.info(f"**Component Name:** {comp_desc if comp_desc else 'Pilih P/N dulu'}")
+                
                 tsn = st.number_input("TSN", step=0.1)
                 csn = st.number_input("CSN", step=1)
+
+            # Baris Detail Lainnya
+            c3, c4, c5 = st.columns(3)
             with c3:
                 tso = st.number_input("TSO", step=0.1)
+            with c4:
                 cso = st.number_input("CSO", step=1)
+            with c5:
                 dsn = st.number_input("DSN", step=0.1)
-                dso = st.number_input("DSO", step=0.1)
 
             if st.form_submit_button("Save Installation"):
-                if pn and sn and final_p_sn != "No Parent Found":
+                if selected_pn != "-- Pilih P/N --" and selected_sn != "-- Pilih S/N --" and final_p_sn != "No Parent Found":
+                    # GUNAKAN comp_desc UNTUK MENGISI component_name
                     curr.execute("""
-                        INSERT INTO installed_components (ac_reg, parent_sn, component_name, position, part_number, serial_number, tsn, csn, tso, cso, dsn, dso) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (selected_reg, final_p_sn, st.session_state.target_comp, pos, pn, sn, tsn, csn, tso, cso, dsn, dso))
+                        INSERT INTO installed_components (
+                            ac_reg, parent_sn, component_name, position, 
+                            part_number, serial_number, tsn, csn, tso, cso, dsn, dso, status
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INSTALLED')
+                    """, (selected_reg, final_p_sn, comp_desc, pos, 
+                          selected_pn, selected_sn, tsn, csn, tso, cso, dsn, 0.0))
+                    
+                    # UPDATE MASTER SERIAL NUMBER: Status pindah dari Store ke Aircraft
+                    curr.execute("""
+                        UPDATE master_serial_number 
+                        SET current_location = 'Aircraft', location = ? 
+                        WHERE part_number = ? AND serial_number = ?
+                    """, (selected_reg, selected_pn, selected_sn))
+                    
                     conn.commit()
-                    st.success("Data Berhasil Disimpan!")
+                    st.success(f"Berhasil: {comp_desc} terpasang di {selected_reg}")
                     st.session_state.show_form = False
                     st.rerun()
+                else:
+                    st.error("P/N dan S/N wajib dipilih dari Master Data!")
 
     # 4. List & Report
     st.subheader(f"📋 Installed Components List - {selected_reg}")
