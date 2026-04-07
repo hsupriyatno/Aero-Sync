@@ -115,41 +115,87 @@ def show(page_name):
                     except Exception as e:
                         st.error(f"Database Error: {e}")
         with tab_sn:
-            st.subheader("🆔 Master Serial Number")
+            st.subheader("🆕 Register New Serial Number")
+    
+            # --- 1. Ambil daftar P/N (DI LUAR FORM AGAR INTERAKTIF) ---
             try:
-                # Ambil data dari database
-                df_sn = pd.read_sql("SELECT * FROM master_serial_number", conn)
-        
-                if df_sn.empty:
-                    st.info("Belum ada Serial Number yang terdaftar di database.")
-                else:
-                    # Tampilkan tabel data
-                    st.dataframe(df_sn, use_container_width=True)
-            
-            except Exception as e:
-                st.error(f"⚠️ Gagal memuat data Master Serial Number: {e}")
-        
-                # Tombol Darurat untuk membuat tabel jika hilang
-                if st.button("Fix & Create Serial Number Table"):
-                    curr = conn.cursor()
-                    curr.execute('''
-                        CREATE TABLE IF NOT EXISTS master_serial_number (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            part_number TEXT,
-                            serial_number TEXT,
-                            description TEXT,
-                            status TEXT,
-                            current_location TEXT,
-                            location TEXT,
-                            tsn REAL DEFAULT 0,
-                            csn INTEGER DEFAULT 0,
-                            tso REAL DEFAULT 0,
-                            cso INTEGER DEFAULT 0
-                        )
-                    ''')
-                    conn.commit()
-                    st.success("Tabel berhasil dibuat! Silakan refresh halaman.")
-                    st.rerun()  
+                df_pn_list = pd.read_sql("SELECT part_number FROM master_part_number", conn)
+                pn_options = df_pn_list['part_number'].tolist()
+            except:
+                pn_options = ["Master P/N Belum Terisi"]
+
+            # --- 2. Selectbox P/N (DI LUAR FORM AGAR RERUN OTOMATIS) ---
+            part_number = st.selectbox("Select Part Number", options=pn_options, key="sb_pn_selector")
+
+            # --- 3. Lookup Description ---
+            part_description = ""
+            if part_number and part_number != "Master P/N Belum Terisi":
+                try:
+                    query_desc = "SELECT description FROM master_part_number WHERE part_number = ?"
+                    df_desc = pd.read_sql(query_desc, conn, params=(part_number,))
+                    if not df_desc.empty:
+                        part_description = df_desc['description'].iloc[0]
+                except:
+                    part_description = "Error fetching description"
+
+            # --- 4. Form Sisa Data ---
+            with st.form("form_add_sn_fixed"):
+                # Tampilkan deskripsi sebagai info (bisa pakai st.info atau text_input disabled)
+                st.info(f"**Description:** {part_description}")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    serial_number = st.text_input("Serial Number (S/N)")
+                    status = st.selectbox("Condition", ["S", "U", "AR", "SCRAP"])
+                    location = st.selectbox("Current Location", ["HO Store", "Field", "Transit"])
+                
+                with col2:
+                    tsn = st.number_input("Time Since New (TSN)", min_value=0.0, format="%.2f")
+                    csn = st.number_input("Cycles Since New (CSN)", min_value=0)
+                    tso = st.number_input("Time Since Overhaul (TSO)", min_value=0.0, format="%.2f")
+                    cso = st.number_input("Cycles Since Overhaul (CSO)", min_value=0)
+                    dsn = st.number_input("Day Since New (DSN)", min_value=0)
+                    dso = st.number_input("Day Since Overhaul (DSO)", min_value=0)
+
+                submit_sn = st.form_submit_button("Register S/N")
+
+                if submit_sn:
+                    if serial_number:
+                        curr = conn.cursor()
+                        try:
+                            # --- 1. CEK APAKAH S/N SUDAH ADA (Validasi Duplikat) ---
+                            # Kita cek kombinasi P/N dan S/N agar tidak ada data ganda
+                            curr.execute("SELECT id FROM master_serial_number WHERE part_number=? AND serial_number=?", (part_number, serial_number))
+                            existing = curr.fetchone()
+                            
+                            if existing:
+                                st.error(f"⚠️ S/N {serial_number} untuk P/N {part_number} sudah terdaftar di database!")
+                            else:
+                                # --- 2. JIKA BELUM ADA, BARU JALANKAN INSERT ---
+                                curr.execute('''
+                                    INSERT INTO master_serial_number 
+                                    (part_number, serial_number, status, current_location, tsn, csn, tso, cso, dsn, dso)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ''', (part_number, serial_number, status, location, tsn, csn, tso, cso, dsn, dso))
+                                
+                                conn.commit()
+                                st.success(f"✅ S/N {serial_number} berhasil didaftarkan!")
+                                st.rerun()
+                                
+                        except Exception as e:
+                            st.error(f"❌ Gagal simpan: {e}")
+                    else:
+                        st.warning("Mohon isi Serial Number!")
+
+            # --- TABEL MONITORING DI BAWAH FORM ---
+            st.divider()
+            st.subheader("🆔 Registered Serial Number List")
+            try:
+                # Menggunakan query yang sama untuk menampilkan tabel
+                df_view_sn = pd.read_sql("SELECT * FROM master_serial_number ORDER BY id DESC", conn)
+                st.dataframe(df_view_sn, use_container_width=True, hide_index=True)
+            except:
+                st.info("Belum ada data Serial Number.")  
 
     # ==========================================
     # HALAMAN: INCOMING/OUTGOING
