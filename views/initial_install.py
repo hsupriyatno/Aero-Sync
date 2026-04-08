@@ -133,7 +133,7 @@ def show():
                 sn_options = []
                 if selected_pn != "-- Pilih P/N --":
                     # Hanya S/N yang ada di gudang (Store) yang bisa diinstall
-                    query_sn = "SELECT serial_number FROM master_serial_number WHERE part_number = ? AND current_location = 'Store'"
+                    query_sn = "SELECT serial_number FROM master_serial_number WHERE part_number = ?"
                     df_master_sn = pd.read_sql(query_sn, conn, params=(selected_pn,))
                     sn_options = df_master_sn['serial_number'].tolist()
                 
@@ -173,6 +173,7 @@ def show():
                           selected_pn, selected_sn, tsn, csn, tso, cso, dsn, 0.0))
                     
                     # UPDATE MASTER SERIAL NUMBER: Status pindah dari Store ke Aircraft
+                    # Di dalam if st.form_submit_button("Save Installation"):
                     curr.execute("""
                         UPDATE master_serial_number 
                         SET current_location = 'Aircraft', location = ? 
