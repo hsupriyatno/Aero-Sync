@@ -103,68 +103,84 @@ def show():
     if st.session_state.get('show_form'):
         st.subheader(f"📝 Install: {st.session_state.target_comp}")
         
-        # --- LOGIKA PENENTUAN PARENT (TAMBAHKAN INI) ---
-        if st.session_state.target_parent.lower() == "airframe":
-            parent_options = ["Airframe"]
-        else:
-            # Cari S/N komponen induk yang sudah terpasang di pesawat ini
-            curr.execute("SELECT serial_number, position FROM installed_components WHERE ac_reg = ? AND component_name = ?", 
-                         (selected_reg, st.session_state.target_parent))
-            p_rows = curr.fetchall()
-            parent_options = [f"{r[0]} ({r[1]})" for r in p_rows] if p_rows else ["No Parent Found"]
-
-        sel_parent = st.selectbox("Select Parent S/N", parent_options)
-        # Selesaikan variabel final_p_sn di sini agar tidak error lagi
-        final_p_sn = sel_parent.split(" (")[0] if sel_parent else "Airframe"
-
-        # --- LANJUT KE TRIGGER P/N (Yang sudah berhasil sebelumnya) ---
+        # 1. AMBIL MASTER DATA P/N (Wajib di awal)
         df_master_pn = pd.read_sql("SELECT part_number, description FROM master_part_number", conn)
         pn_list = df_master_pn['part_number'].tolist()
         
+        # 2. TRIGGER P/N (Di luar form agar reaktif)
         options_pn = ["-- Pilih P/N --"] + pn_list
-        selected_pn = st.selectbox("Pilih Part Number dari Master", options=options_pn, key="trigger_pn")
+        selected_pn = st.selectbox("Pilih Part Number dari Master", options=options_pn, key="pn_trigger_main")
 
+        # 3. LOGIKA PENGAMBILAN DATA (S/N & Description)
         comp_desc = ""
         sn_options = []
-        if selected_pn != options_pn[0]:
+        
+        if selected_pn != "-- Pilih P/N --":
+            # Ambil Description
             res_desc = df_master_pn[df_master_pn['part_number'] == selected_pn]['description']
             comp_desc = res_desc.values[0] if not res_desc.empty else ""
             
-            curr.execute("SELECT serial_number FROM master_serial_number WHERE part_number = ? AND current_location LIKE ?", (selected_pn, '%Store%'))
+            # Ambil S/N yang ada di Store (Gunakan LIKE agar HO Store terbaca)
+            # Ambil S/N yang ada di Store ATAU yang sudah terpasang di registrasi pesawat ini
+            curr.execute("""
+                SELECT serial_number FROM master_serial_number 
+                WHERE part_number = ? 
+                AND (current_location LIKE '%Store%' OR location = ?)
+            """, (selected_pn, selected_reg))
             sn_options = [r[0] for r in curr.fetchall()]
 
-        # --- FORM INPUT ---
-        with st.form("form_install_final"):
+        # 4. FORM INPUT DATA LAINNYA
+        with st.form("form_final_install"):
             c1, c2 = st.columns(2)
             with c1:
-                st.info(f"**Parent S/N:** {final_p_sn}") # Menampilkan Parent
+                # Tampilkan Parent (Berasal dari session state)
+                st.info(f"**Parent:** {st.session_state.target_parent}")
+                
+                # Dropdown S/N (Sekarang pasti muncul karena sn_options sudah diisi di atas)
                 selected_sn = st.selectbox("Serial Number", options=["-- Pilih S/N --"] + sn_options)
                 pos = st.selectbox("Position", ["LH", "RH", "CTR", "NO.1", "NO.2", "ONLY"])
             
             with c2:
+                # Tampilkan Nama Komponen
                 st.success(f"**Component Name:**\n\n{comp_desc if comp_desc else '---'}")
                 tsn = st.number_input("TSN", step=0.1)
                 csn = st.number_input("CSN", step=1)
+                tso = st.number_input("TSO", step=0.1)
+                cso = st.number_input("CSO", step=1)
+                dsn = st.number_input("DSN", step=0.1)
+                dso = st.number_input("DSO", step=0.1)
 
             st.divider()
-            # ... (Lanjutkan input TSO, CSO, DSN seperti biasa) ...
+            # ... (TSO, CSO, DSN tetap seperti biasa) ...
 
             if st.form_submit_button("Save Installation"):
-                # Sekarang final_p_sn sudah dikenal oleh Python
-                if selected_pn != options_pn[0] and selected_sn != "-- Pilih S/N --" and final_p_sn != "No Parent Found":
-                    # Lanjutkan proses INSERT
+                if selected_pn != "-- Pilih P/N --" and selected_sn != "-- Pilih S/N --":
+                    # GUNAKAN st.session_state.target_comp agar sinkron dengan GRID
                     curr.execute("""
                         INSERT INTO installed_components (
                             ac_reg, parent_sn, component_name, position, 
-                            part_number, serial_number, tsn, csn, status
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'INSTALLED')
-                    """, (selected_reg, final_p_sn, comp_desc, pos, selected_pn, selected_sn, tsn, csn))
+                            part_number, serial_number, tsn, csn, tso, cso, dsn, dso, status
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  'INSTALLED')
+                    """, (
+                        selected_reg, 
+                        st.session_state.target_parent, 
+                        st.session_state.target_comp,  # <-- PERBAIKAN DI SINI
+                        pos, 
+                        selected_pn, 
+                        selected_sn, 
+                        tsn, 
+                        csn,
+                        tso,
+                        cso,
+                        dsn,
+                        dso
+
+                    ))
                     
-                    # Update status di master agar pindah dari Store ke Aircraft
                     curr.execute("UPDATE master_serial_number SET current_location = 'Aircraft', location = ? WHERE serial_number = ?", (selected_reg, selected_sn))
                     
                     conn.commit()
-                    st.success("Data Berhasil Disimpan!")
+                    st.success("Berhasil!")
                     st.session_state.show_form = False
                     st.rerun()
 
