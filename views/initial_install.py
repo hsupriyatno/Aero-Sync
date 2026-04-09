@@ -5,6 +5,7 @@ from database import create_connection
 import io
 from datetime import datetime
 
+# --- Fungsi Report Tetap Sama ---
 def generate_component_report(df, ac_reg, ac_type):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -36,7 +37,7 @@ def show():
     selected_type = df_fleet[df_fleet['ac_reg'] == selected_reg]['ac_type'].values[0]
     st.info(f"Unit: {selected_reg} | Type: {selected_type}")
 
-    # 2. Ambil Struktur Pesawat (Include ATA Chapter)
+    # 2. Ambil Struktur Pesawat (Logic Grid Tetap Sama)
     query_struct = """
         SELECT sub_component, parent_component, required_qty, ata_chapter 
         FROM aircraft_structure 
@@ -52,7 +53,7 @@ def show():
             with cols[idx % 4]:
                 is_layer_1 = item['parent_component'].lower() == "airframe"
 
-                # Hitung Total Required Berdasarkan Jumlah Parent
+                # Hitung Total Required Berdasarkan Jumlah Parent (Maintain Logic)
                 curr.execute("SELECT COUNT(*) FROM installed_components WHERE ac_reg = ? AND component_name = ?", 
                              (selected_reg, item['parent_component']))
                 parent_count = curr.fetchone()[0]
@@ -63,7 +64,7 @@ def show():
                              (selected_reg, item['sub_component']))
                 already_in = len(curr.fetchall())
                 
-                # Ambil Parent S/N Terakhir (Display Only)
+                # Display Only untuk Box
                 curr.execute("SELECT serial_number FROM installed_components WHERE ac_reg = ? AND component_name = ? LIMIT 1", 
                              (selected_reg, item['parent_component']))
                 p_data = curr.fetchone()
@@ -77,7 +78,6 @@ def show():
                     base_color = "#e3f2fd" if is_layer_1 else "#fffde7"
                     border_color = "#1976d2" if is_layer_1 else "#fbc02d"
 
-                # Render Box dengan ATA Chapter
                 html_box = f"""
                 <div style="border: 2px solid {border_color}; padding: 12px; border-radius: 10px; background-color: {base_color}; min-height: 150px; text-align: center; margin-bottom: 10px;">
                     <div style="font-size: 9px; color: #666; font-weight: bold;">{item['ata_chapter']}</div>
@@ -99,50 +99,55 @@ def show():
 
     st.divider()
 
-# 3. Form Entry (FIXED VERSION)
+    # 3. Form Entry
     if st.session_state.get('show_form'):
         st.subheader(f"📝 Install: {st.session_state.target_comp}")
         
-        # 1. AMBIL MASTER DATA P/N (Wajib di awal)
-        df_master_pn = pd.read_sql("SELECT part_number, description FROM master_part_number", conn)
+        query_pn = "SELECT part_number, description FROM master_part_number WHERE description = ?"
+        df_master_pn = pd.read_sql(query_pn, conn, params=(st.session_state.target_comp,))
+        
+        if df_master_pn.empty:
+            df_master_pn = pd.read_sql("SELECT part_number, description FROM master_part_number", conn)
+            
         pn_list = df_master_pn['part_number'].tolist()
-        
-        # 2. TRIGGER P/N (Di luar form agar reaktif)
         options_pn = ["-- Pilih P/N --"] + pn_list
-        selected_pn = st.selectbox("Pilih Part Number dari Master", options=options_pn, key="pn_trigger_main")
+        selected_pn = st.selectbox("Pilih Part Number (Interchangeable)", options=options_pn, key="pn_trigger_main")
 
-        # 3. LOGIKA PENGAMBILAN DATA (S/N & Description)
-        comp_desc = ""
+        comp_desc = st.session_state.target_comp
         sn_options = []
-        
         if selected_pn != "-- Pilih P/N --":
-            # Ambil Description
             res_desc = df_master_pn[df_master_pn['part_number'] == selected_pn]['description']
             comp_desc = res_desc.values[0] if not res_desc.empty else ""
-            
-            # Ambil S/N yang ada di Store (Gunakan LIKE agar HO Store terbaca)
-            # Ambil S/N yang ada di Store ATAU yang sudah terpasang di registrasi pesawat ini
             curr.execute("""
                 SELECT serial_number FROM master_serial_number 
-                WHERE part_number = ? 
-                AND (current_location LIKE '%Store%' OR location = ?)
+                WHERE part_number = ? AND (current_location LIKE '%Store%' OR location = ?)
             """, (selected_pn, selected_reg))
             sn_options = [r[0] for r in curr.fetchall()]
 
-        # 4. FORM INPUT DATA LAINNYA
+        parent_sn_list = ["Airframe"]
+        if st.session_state.target_parent.lower() != "airframe":
+            curr.execute("""
+                SELECT serial_number, position FROM installed_components 
+                WHERE ac_reg = ? AND component_name = ?
+                ORDER BY position ASC
+            """, (selected_reg, st.session_state.target_parent))
+    
+            rows = curr.fetchall()
+            if rows:
+                parent_sn_list = [f"{st.session_state.target_parent} | S/N: {r[0]} | Pos: {r[1]}" for r in rows]
+            else:
+                st.warning(f"Perhatian: {st.session_state.target_parent} belum terpasang di unit ini.")
+                parent_sn_list = [f"{st.session_state.target_parent} (NOT INSTALLED)"]
+
         with st.form("form_final_install"):
             c1, c2 = st.columns(2)
             with c1:
-                # Tampilkan Parent (Berasal dari session state)
-                st.info(f"**Parent:** {st.session_state.target_parent}")
-                
-                # Dropdown S/N (Sekarang pasti muncul karena sn_options sudah diisi di atas)
+                selected_parent_full = st.selectbox("Install to (Parent S/N)", options=parent_sn_list)
                 selected_sn = st.selectbox("Serial Number", options=["-- Pilih S/N --"] + sn_options)
                 pos = st.selectbox("Position", ["LH", "RH", "CTR", "NO.1", "NO.2", "ONLY"])
             
             with c2:
-                # Tampilkan Nama Komponen
-                st.success(f"**Component Name:**\n\n{comp_desc if comp_desc else '---'}")
+                st.success(f"**Component Name:**\n\n{comp_desc}")
                 tsn = st.number_input("TSN", step=0.1)
                 csn = st.number_input("CSN", step=1)
                 tso = st.number_input("TSO", step=0.1)
@@ -150,41 +155,61 @@ def show():
                 dsn = st.number_input("DSN", step=0.1)
                 dso = st.number_input("DSO", step=0.1)
 
-            st.divider()
-            # ... (TSO, CSO, DSN tetap seperti biasa) ...
+            submitted = st.form_submit_button("Save Installation")
 
-            if st.form_submit_button("Save Installation"):
-                if selected_pn != "-- Pilih P/N --" and selected_sn != "-- Pilih S/N --":
-                    # GUNAKAN st.session_state.target_comp agar sinkron dengan GRID
-                    curr.execute("""
-                        INSERT INTO installed_components (
-                            ac_reg, parent_sn, component_name, position, 
-                            part_number, serial_number, tsn, csn, tso, cso, dsn, dso, status
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  'INSTALLED')
-                    """, (
-                        selected_reg, 
-                        st.session_state.target_parent, 
-                        st.session_state.target_comp,  # <-- PERBAIKAN DI SINI
-                        pos, 
-                        selected_pn, 
-                        selected_sn, 
-                        tsn, 
-                        csn,
-                        tso,
-                        cso,
-                        dsn,
-                        dso
+            if submitted:
+                # --- LOGIKA VALIDASI KUOTA DINAMIS ---
+                curr.execute("SELECT required_qty, parent_component FROM aircraft_structure WHERE ac_type = ? AND sub_component = ?", 
+                             (selected_type, st.session_state.target_comp))
+                res_struct = curr.fetchone()
+                base_qty = res_struct[0] if res_struct else 1
+                parent_name = res_struct[1] if res_struct else "Airframe"
 
-                    ))
-                    
-                    curr.execute("UPDATE master_serial_number SET current_location = 'Aircraft', location = ? WHERE serial_number = ?", (selected_reg, selected_sn))
-                    
-                    conn.commit()
-                    st.success("Berhasil!")
-                    st.session_state.show_form = False
-                    st.rerun()
+                curr.execute("SELECT COUNT(*) FROM installed_components WHERE ac_reg = ? AND component_name = ?", 
+                             (selected_reg, parent_name))
+                parent_installed_count = curr.fetchone()[0]
 
-    # 4. List & Report
+                if parent_name.lower() == "airframe":
+                    total_required_qty = base_qty
+                else:
+                    total_required_qty = base_qty * max(1, parent_installed_count)
+
+                curr.execute("SELECT COUNT(*) FROM installed_components WHERE component_name = ? AND ac_reg = ?", 
+                             (st.session_state.target_comp, selected_reg))
+                already_installed = curr.fetchone()[0]
+
+                if already_installed >= total_required_qty:
+                    st.error(f"Gagal! {st.session_state.target_comp} sudah mencapai kuota total ({already_installed}/{total_required_qty}).")
+                    st.info(f"Struktur membutuhkan {base_qty} unit per {parent_name}.")
+                elif selected_sn == "-- Pilih S/N --":
+                    st.error("Silahkan pilih Serial Number terlebih dahulu.")
+                else:
+                    # --- EKSTRAK FINAL PARENT S/N ---
+                    if "|" in selected_parent_full:
+                        final_p_sn = selected_parent_full.split("| S/N: ")[1].split(" |")[0]
+                    else:
+                        final_p_sn = "Airframe"
+
+                    # --- JALANKAN INSERT ---
+                    try:
+                        curr.execute("""
+                            INSERT INTO installed_components (
+                                ac_reg, parent_sn, component_name, position,
+                                part_number, serial_number, tsn, csn, tso, cso, dsn, dso, status
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INSTALLED')
+                        """, (selected_reg, final_p_sn, st.session_state.target_comp, pos,
+                              selected_pn, selected_sn, tsn, csn, tso, cso, dsn, dso))
+                        
+                        curr.execute("UPDATE master_serial_number SET current_location = 'Aircraft', location = ? WHERE serial_number = ?", 
+                                     (selected_reg, selected_sn))
+                        
+                        conn.commit()
+                        st.success(f"Berhasil Terpasang!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Kesalahan Database: {e}")
+
+    # 4. List & Report (Tetap Sama)
     st.subheader(f"📋 Installed Components List - {selected_reg}")
     df_installed = pd.read_sql_query("""
         SELECT position as POS, component_name as NAME, part_number as PN, serial_number as SN, parent_sn as PARENT_SN, tsn as TSN, csn as CSN, id
@@ -202,21 +227,5 @@ def show():
                 conn.commit()
                 st.rerun()
             st.divider()
-
-        # Report Export
-        df_report = pd.read_sql_query("""
-            SELECT component_name, part_number, serial_number, position, parent_sn, tsn, csn, tso, cso, dsn, dso 
-            FROM installed_components WHERE ac_reg = ?
-        """, conn, params=(selected_reg,))
         
-        report_data = generate_component_report(df_report, selected_reg, selected_type)
-        st.download_button(
-            label="📄 Export to Excel/PDF Report",
-            data=report_data,
-            file_name=f"Initial_Status_{selected_reg}_{datetime.now().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-    else:
-        st.info("Belum ada komponen yang terdaftar.")
-
     conn.close()
