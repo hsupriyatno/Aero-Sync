@@ -189,13 +189,37 @@ def show(page_name):
 
             # --- TABEL MONITORING DI BAWAH FORM ---
             st.divider()
-            st.subheader("🆔 Registered Serial Number List")
-            try:
-                # Menggunakan query yang sama untuk menampilkan tabel
-                df_view_sn = pd.read_sql("SELECT * FROM master_serial_number ORDER BY id DESC", conn)
+
+            # 1. Tarik data dari database
+            conn = create_connection()
+            df_view_sn = pd.read_sql("SELECT * FROM master_serial_number ORDER BY id DESC", conn)
+            conn.close()
+
+            # 2. Cek apakah data ada
+            if not df_view_sn.empty:
+                # Buat dua kolom: Kiri untuk Judul, Kanan untuk Tombol
+                col_judul, col_btn = st.columns([3, 1])
+    
+                with col_judul:
+                    st.write("### 🆔 Registered Serial Number List")
+    
+                with col_btn:
+                    # Siapkan data CSV
+                    csv_data = df_view_sn.to_csv(index=False).encode('utf-8')
+        
+                    # TAMPILKAN TOMBOLNYA DI SINI
+                    st.download_button(
+                        label="📥 Export CSV",
+                        data=csv_data,
+                        file_name="master_sn_list.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+
+                # 3. Tampilkan tabel di bawah judul & tombol
                 st.dataframe(df_view_sn, use_container_width=True, hide_index=True)
-            except:
-                st.info("Belum ada data Serial Number.")  
+            else:
+                st.info("Data masih kosong, silakan register S/N baru.")  
 
     # ==========================================
     # HALAMAN: INCOMING/OUTGOING
