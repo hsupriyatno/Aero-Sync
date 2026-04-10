@@ -92,6 +92,16 @@ def init_db():
         status TEXT DEFAULT 'INSTALLED',
         FOREIGN KEY (ac_reg) REFERENCES catalog (ac_reg))''')
 
+    #10. PART INTERCHANGE (Alternatif Part Number dan Interchangeability)
+
+    curr.execute('''CREATE TABLE IF NOT EXISTS part_interchange (
+        original_pn TEXT,
+        alternate_pn TEXT,
+        interchange_type TEXT, -- 'ONE-WAY' atau 'TWO-WAY'
+        remarks TEXT,
+        PRIMARY KEY (original_pn, alternate_pn)
+    )''')
+
     conn.commit()
     conn.close()
     print("Database AERO-SYNCH (10 Tables) initialized successfully.")
