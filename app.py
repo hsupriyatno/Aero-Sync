@@ -9,6 +9,7 @@ import views.inventory as inventory
 import views.rcpm as rcpm
 import views.procurement as procurement
 import datetime
+import part_interchange_mgmt  # Import file baru
 from views import catalog, initial_install
 
 # 1. Konfigurasi Halaman
@@ -82,9 +83,10 @@ eng_opts = ["", "Engineering Order", "Engineering Evaluation", "Deferred Defect"
 inv_opts = ["", "Parts Catalog", "Parts In Stock", "Parts Usage History", "Incoming/Outgoing", "Allotment"]
 rcp_opts = ["", "RCPM Dashboard", "Defect Analysis", "Component Analysis", "ECTM", "Oil Consumption Analysis", "ETOPS Requirement"]
 proc_opts = ["", "Requisition", "Purchase Order", "Repair Order", "Vendor Management"]
+part_interchange_opts = ["", "Part Interchangeability Management"]  # Opsi untuk part interchange
 
 # Membuat list gabungan untuk fitur "Quick Jump" agar tidak NameError
-opsi_menu = ["Dashboard"] + cat_opts + maint_opts + status_opts + eng_opts + inv_opts + rcp_opts + proc_opts
+opsi_menu = ["Dashboard"] + cat_opts + maint_opts + status_opts + eng_opts + inv_opts + rcp_opts + proc_opts + part_interchange_opts
 opsi_menu = [opt for opt in opsi_menu if opt != ""] # Buang string kosong
 
 # 6. SIDEBAR CUSTOM
@@ -104,7 +106,7 @@ st.sidebar.selectbox("ENGINEERING", eng_opts, index=get_index(eng_opts, st.sessi
 st.sidebar.selectbox("INVENTORY", inv_opts, index=get_index(inv_opts, st.session_state.page), key="inv_select", on_change=update_page, args=("inv_select",))
 st.sidebar.selectbox("RCPM", rcp_opts, index=get_index(rcp_opts, st.session_state.page), key="rcp", on_change=update_page, args=("rcp",))
 st.sidebar.selectbox("PROCUREMENT", proc_opts, index=get_index(proc_opts, st.session_state.page), key="proc", on_change=update_page, args=("proc",))
-
+st.sidebar.selectbox("PART INTERCHANGE MGMT", ["", "Part Interchangeability Management"], index=get_index(["", "Part Interchangeability Management"], st.session_state.page), key="interchange", on_change=update_page, args=("interchange",))
 st.sidebar.divider()
 # Navigasi Cepat (Sudah tidak akan error opsi_menu lagi)
 st.sidebar.selectbox("QUICK JUMP", options=opsi_menu, index=get_index(opsi_menu, st.session_state.page), key="nav_menu", on_change=update_page, args=("nav_menu",))
@@ -130,5 +132,7 @@ elif page in rcp_opts:
     rcpm.show(page)
 elif page in proc_opts:
     procurement.show(page)
+elif page == "Part Interchangeability Management":
+    part_interchange_mgmt.show()
 else:
     st.info(f"Halaman '{page}' sedang dalam pengembangan.")
