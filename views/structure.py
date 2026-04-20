@@ -4,7 +4,7 @@ from database import create_connection
 
 def show(page_name):
     if page_name == "Structure Management": # Sesuaikan dengan nama di app.py Bapak
-        st.header("🏗️ Aircraft Structure Management")
+        st.header("🏗️ Aircraft Configuration Management")
         st.write("Definisikan komponen wajib (Master Blueprint) untuk setiap tipe pesawat.")
 
         conn = create_connection()
