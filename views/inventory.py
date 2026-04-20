@@ -1,225 +1,200 @@
+# Pastikan import di bagian paling atas file seperti ini:
+# Pastikan import di bagian paling atas file seperti ini:
 import streamlit as st
-from database import create_connection
-import datetime
 import pandas as pd
-from fpdf import FPDF
+from datetime import date # Penting agar date.today() berfungsi
+import sqlite3
+import os
 
-# --- FUNGSI GENERATE NOMOR GRN ---
-def generate_grn_number():
-    conn = create_connection()
-    curr = conn.cursor()
+def create_connection():
+    # Sesuaikan nama file database dengan yang Anda gunakan di AERO-SYNCH
+    db_file = "aircraft.db" 
+    conn = None
     try:
-        curr.execute("SELECT COUNT(*) FROM grn_log")
-        count = curr.fetchone()[0] + 1
-    except:
-        count = 1
-    finally:
-        conn.close()
-    today = datetime.date.today()
-    return f"GRN/{today.year}/{today.strftime('%m')}/{count:03d}"
+        conn = sqlite3.connect(db_file)
+    except Exception as e:
+        st.error(f"Gagal koneksi ke database: {e}")
+    return conn
 
-# --- FUNGSI BUAT PDF GRN ---
-def create_grn_pdf(grn_info):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(190, 10, "GOOD RECEIVE NOTE (GRN)", 1, 1, 'C')
-    pdf.ln(10)
-    pdf.set_font("Arial", '', 12)
-    
-    details = [
-        ["GRN Number", grn_info['grn_no']],
-        ["Date Received", grn_info['date']],
-        ["Document Ref", grn_info['doc_ref']],
-        ["Part Number", grn_info['pn']],
-        ["Serial Number", grn_info['sn']],
-        ["Condition", grn_info['status']],
-        ["Received From", grn_info['source']],
-        ["Storage Loc", grn_info['loc']]
-    ]
-    
-    for row in details:
-        pdf.cell(50, 10, row[0], 1)
-        pdf.cell(140, 10, str(row[1]), 1, 1)
-    
-    pdf.ln(20)
-    pdf.cell(95, 10, "Received By (Storeman),", 0, 0, 'C')
-    pdf.cell(95, 10, "Inspected By (Part Inspector),", 0, 1, 'C')
-    pdf.ln(20)
-    pdf.cell(95, 10, "____________________", 0, 0, 'C')
-    pdf.cell(95, 10, "____________________", 0, 1, 'C')
-    return pdf.output(dest='S').encode('latin-1') 
 
 def show(page_name):
-    # --- PRE-LOADING DATA ---
-    conn = create_connection()
-    try:
-        df_master_sn = pd.read_sql("SELECT * FROM master_serial_number", conn)
-    except:
-        df_master_sn = pd.DataFrame()
-    finally:
-        conn.close()
-    
-    conn = create_connection()
-
-    # ==========================================
-    # HALAMAN: PARTS CATALOG
-    # ==========================================
     if page_name == "Parts Catalog":
         st.subheader("📦 Inventory Management: Parts Catalog")
         tab_pn, tab_sn = st.tabs(["📑 Master Part Number", "🆔 Master Serial Number"])
 
+        # ==========================================
+        # --- TAB 1: MASTER PART NUMBER ---
+        # ==========================================
         with tab_pn:
             if 'edit_mode_pn' not in st.session_state:
                 st.session_state.edit_mode_pn = False
+            if 'edit_data_pn' not in st.session_state:
                 st.session_state.edit_data_pn = {}
 
-            # Perbaikan Duplicate Key: Key form harus berbeda antara mode input dan edit
-            form_key = "form_pn_edit" if st.session_state.edit_mode_pn else "form_pn_new"
-            form_label = "Update Part Number" if st.session_state.edit_mode_pn else "Register New Part Number"
+            # Gunakan FORM agar tombol submit terbaca
+            with st.form(key="form_pn_v3"):
+                st.write("### Register / Update Part Number")
+                
+                c1, c2 = st.columns(2)
+                pn_input = c1.text_input("Part Number (P/N)", value=st.session_state.edit_data_pn.get('part_number', ''))
+                ata_input = c2.text_input("ATA Chapter", value=st.session_state.edit_data_pn.get('ata_chapter', ''))
+                
+                c3, c4 = st.columns(2)
+                desc_input = c3.text_input("Description", value=st.session_state.edit_data_pn.get('description', ''))
+                cat_input = c4.selectbox("Category", ["HT", "OC", "CM"], 
+                                       index=["HT", "OC", "CM"].index(st.session_state.edit_data_pn.get('category', 'HT')))
+                
+                st.markdown("---")
+                c5, c6 = st.columns(2)
+                tbo_h = c5.number_input("TBO Hours", value=float(st.session_state.edit_data_pn.get('tbo_hours', 0.0)))
+                tbo_c = c6.number_input("TBO Cycles", value=float(st.session_state.edit_data_pn.get('tbo_cycles', 0.0)))
 
-            with st.form(key=form_key):
-                col1, col2 = st.columns(2)
-                pn = col1.text_input("Part Number", value=st.session_state.edit_data_pn.get('part_number', ''))
-                desc = col1.text_input("Description", value=st.session_state.edit_data_pn.get('description', ''))
-                ata = col2.text_input("ATA Chapter", value=st.session_state.edit_data_pn.get('ata_chapter', ''))
+                c7, c8 = st.columns(2)
+                s_life = c7.number_input("Shelf Life (months)", value=int(st.session_state.edit_data_pn.get('shelf_life', 0)))
+                tbo_cal = c8.number_input("TBO Calendar (Days)", value=int(st.session_state.edit_data_pn.get('tbo_calendar', 0)))
                 
-                cat_list = ["HT", "OC", "CM"]
-                cat_idx = cat_list.index(st.session_state.edit_data_pn.get('category', 'HT')) if st.session_state.edit_data_pn.get('category') in cat_list else 0
-                cat = col2.selectbox("Category", cat_list, index=cat_idx)
+                # Perbaikan error datetime: pakai date.today() langsung
+                date_reg = st.date_input("Date Registered", value=date.today())
                 
-                tbo = col1.number_input("TBO Hours", step=0.1, value=float(st.session_state.edit_data_pn.get('tbo', 0.0)))
-                cbo = col2.number_input("TBO Cycles", step=1.0, value=float(st.session_state.edit_data_pn.get('cbo', 0.0)))
-                dbo = col2.number_input("TBO Calendar (Days)", step=1, value=int(st.session_state.edit_data_pn.get('dbo', 0)))
+                # TOMBOL SUBMIT (Wajib ada di dalam form)
+                submitted = st.form_submit_button("Save Part Number")
                 
-                shelf = col1.number_input("Shelf Life (months)", step=1, value=int(st.session_state.edit_data_pn.get('shelf', 0)))
-                date_reg = col2.date_input("Date Registered", value=datetime.date.today())
-                
-                submitted = st.form_submit_button(form_label)
                 if submitted:
-                    conn = create_connection()
-                    curr = conn.cursor()
-                    try:
-                        if st.session_state.edit_mode_pn:
-                            query = "UPDATE master_part_number SET description=?, ata_chapter=?, category=?, tbo=?, cbo=?, dbo=?, shelf=? WHERE part_number=?"
-                            params = (desc, ata, cat, tbo, cbo, dbo, shelf, pn)
-                        else:
-                            query = "INSERT INTO master_part_number (part_number, description, ata_chapter, category, tbo, cbo, dbo, shelf, date_registered) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-                            params = (pn, desc, ata, cat, tbo, cbo, dbo, shelf, str(date_reg))
-                        
-                        curr.execute(query, params)
-                        conn.commit()
-                        st.success("Data berhasil disimpan!")
-                        st.session_state.edit_mode_pn = False
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Database Error: {e}")
-        with tab_sn:
-            st.subheader("🆕 Register New Serial Number")
-    
-            # --- 1. Ambil daftar P/N (DI LUAR FORM AGAR INTERAKTIF) ---
-            try:
-                df_pn_list = pd.read_sql("SELECT part_number FROM master_part_number", conn)
-                pn_options = df_pn_list['part_number'].tolist()
-            except:
-                pn_options = ["Master P/N Belum Terisi"]
-
-            # --- 2. Selectbox P/N (DI LUAR FORM AGAR RERUN OTOMATIS) ---
-            part_number = st.selectbox("Select Part Number", options=pn_options, key="sb_pn_selector")
-
-            # --- 3. Lookup Description ---
-            part_description = ""
-            if part_number and part_number != "Master P/N Belum Terisi":
-                try:
-                    query_desc = "SELECT description FROM master_part_number WHERE part_number = ?"
-                    df_desc = pd.read_sql(query_desc, conn, params=(part_number,))
-                    if not df_desc.empty:
-                        part_description = df_desc['description'].iloc[0]
-                except:
-                    part_description = "Error fetching description"
-
-            # --- 4. Form Sisa Data ---
-            with st.form("form_add_sn_fixed"):
-                # Tampilkan deskripsi sebagai info (bisa pakai st.info atau text_input disabled)
-                st.info(f"**Description:** {part_description}")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    serial_number = st.text_input("Serial Number (S/N)")
-                    status = st.selectbox("Condition", ["S", "U", "AR", "SCRAP"])
-                    location = st.selectbox("Current Location", ["HO Store", "Field", "Transit"])
-                
-                with col2:
-                    tsn = st.number_input("Time Since New (TSN)", min_value=0.0, format="%.2f")
-                    csn = st.number_input("Cycles Since New (CSN)", min_value=0)
-                    tso = st.number_input("Time Since Overhaul (TSO)", min_value=0.0, format="%.2f")
-                    cso = st.number_input("Cycles Since Overhaul (CSO)", min_value=0)
-                    dsn = st.number_input("Day Since New (DSN)", min_value=0)
-                    dso = st.number_input("Day Since Overhaul (DSO)", min_value=0)
-
-                submit_sn = st.form_submit_button("Register S/N")
-
-                if submit_sn:
-                    if serial_number:
+                    if not pn_input:
+                        st.error("Part Number tidak boleh kosong!")
+                    else:
+                        conn = create_connection()
                         curr = conn.cursor()
                         try:
-                            # --- 1. CEK APAKAH S/N SUDAH ADA (Validasi Duplikat) ---
-                            # Kita cek kombinasi P/N dan S/N agar tidak ada data ganda
-                            curr.execute("SELECT id FROM master_serial_number WHERE part_number=? AND serial_number=?", (part_number, serial_number))
-                            existing = curr.fetchone()
-                            
-                            if existing:
-                                st.error(f"⚠️ S/N {serial_number} untuk P/N {part_number} sudah terdaftar di database!")
-                            else:
-                                # --- 2. JIKA BELUM ADA, BARU JALANKAN INSERT ---
-                                curr.execute('''
-                                    INSERT INTO master_serial_number 
-                                    (part_number, serial_number, status, current_location, tsn, csn, tso, cso, dsn, dso)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                ''', (part_number, serial_number, status, location, tsn, csn, tso, cso, dsn, dso))
-                                
-                                conn.commit()
-                                st.success(f"✅ S/N {serial_number} berhasil didaftarkan!")
-                                st.rerun()
-                                
+                            # Logika simpan data
+                            curr.execute("""
+                                INSERT OR REPLACE INTO master_part_number 
+                                (part_number, description, ata_chapter, category, tbo_hours, tbo_cycles, shelf_life, tbo_calendar, date_registered)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
+                                (pn_input, desc_input, ata_input, cat_input, tbo_h, tbo_c, s_life, tbo_cal, str(date_reg)))
+                            conn.commit()
+                            st.success(f"Data {pn_input} Berhasil Disimpan!")
+                            st.session_state.edit_mode_pn = False
+                            st.session_state.edit_data_pn = {}
+                            st.rerun()
                         except Exception as e:
-                            st.error(f"❌ Gagal simpan: {e}")
-                    else:
-                        st.warning("Mohon isi Serial Number!")
+                            st.error(f"Error Database: {e}")
+                        finally:
+                            conn.close()
 
-            # --- TABEL MONITORING DI BAWAH FORM ---
-            st.divider()
-
-            # 1. Tarik data dari database
+            # --- TAMPILAN TABEL ---
+            st.write("---")
+            st.write("#### 📑 Registered Part Number List")
+            
             conn = create_connection()
-            df_view_sn = pd.read_sql("SELECT * FROM master_serial_number ORDER BY id DESC", conn)
+            # Gunakan try-except untuk handle kolom ID jika tidak ada
+            try:
+                df_pn = pd.read_sql("SELECT * FROM master_part_number", conn)
+            except:
+                df_pn = pd.DataFrame() # Jika tabel belum ada
             conn.close()
 
-            # 2. Cek apakah data ada
-            if not df_view_sn.empty:
-                # Buat dua kolom: Kiri untuk Judul, Kanan untuk Tombol
-                col_judul, col_btn = st.columns([3, 1])
-    
-                with col_judul:
-                    st.write("### 🆔 Registered Serial Number List")
-    
-                with col_btn:
-                    # Siapkan data CSV
-                    csv_data = df_view_sn.to_csv(index=False).encode('utf-8')
-        
-                    # TAMPILKAN TOMBOLNYA DI SINI
-                    st.download_button(
-                        label="📥 Export CSV",
-                        data=csv_data,
-                        file_name="master_sn_list.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
+            if not df_pn.empty:
+                # PERBAIKAN: Ganti .bold() dengan Markdown **
+                h1, h2, h3, h4, h5 = st.columns([1, 3, 4, 2, 2])
+                h1.markdown("**ID**")
+                h2.markdown("**P/N**")
+                h3.markdown("**Description**")
+                h4.markdown("**Cat**")
+                h5.markdown("**Action**")
+                
+                for idx, row in df_pn.iterrows():
+                    r = st.columns([1, 3, 4, 2, 2])
+                    # Cek jika kolom 'id' ada, jika tidak pakai index
+                    display_id = row['id'] if 'id' in row else idx
+                    r[0].write(display_id)
+                    r[1].write(row['part_number'])
+                    r[2].write(row['description'])
+                    r[3].write(row['category'])
+                    
+                    # Tombol Aksi
+                    be, bd = r[4].columns(2)
+                    if be.button("📝", key=f"ed_pn_{idx}"):
+                        st.session_state.edit_mode_pn = True
+                        st.session_state.edit_data_pn = row.to_dict()
+                        st.rerun()
+                    
+                    if bd.button("🗑️", key=f"dl_pn_{idx}"):
+                        # Logika delete sederhana
+                        c = create_connection()
+                        c.execute(f"DELETE FROM master_part_number WHERE part_number='{row['part_number']}'")
+                        c.commit()
+                        c.close()
+                        st.rerun()
 
-                # 3. Tampilkan tabel di bawah judul & tombol
-                st.dataframe(df_view_sn, use_container_width=True, hide_index=True)
-            else:
-                st.info("Data masih kosong, silakan register S/N baru.")  
+
+        # --- TAB 2: MASTER SERIAL NUMBER ---
+        with tab_sn:
+            st.write("### 🆕 Register New Serial Number")
+            conn = create_connection()
+            # Ambil opsi P/N dari master
+            df_pn_opts = pd.read_sql("SELECT part_number FROM master_part_number", conn)
+            pn_list = df_pn_opts['part_number'].tolist() if not df_pn_opts.empty else ["N/A"]
+            
+            with st.form("form_add_sn"):
+                sel_pn = st.selectbox("Select Part Number", options=pn_list)
+                c1, c2 = st.columns(2)
+                sn_input = c1.text_input("Serial Number (S/N)")
+                loc_input = c1.selectbox("Initial Location", ["HO Store", "Field", "Transit"])
+                stat_input = c2.selectbox("Condition", ["S", "U", "AR", "SCRAP"])
+                
+                if st.form_submit_button("Register S/N"):
+                    curr = conn.cursor()
+                    curr.execute("INSERT INTO master_serial_number (part_number, serial_number, current_location, status) VALUES (?,?,?,?)",
+                                 (sel_pn, sn_input, loc_input, stat_input))
+                    conn.commit()
+                    st.rerun()
+
+            st.divider()
+            # Tampilkan Tabel S/N
+            df_sn_list = pd.read_sql("SELECT * FROM master_serial_number ORDER BY id DESC", conn)
+            if not df_sn_list.empty:
+                st.write("#### 🆔 Registered Serial Number List")
+                # Header Tabel
+                h = st.columns([1, 3, 3, 2, 2, 2])
+                cols = ["ID", "P/N", "S/N", "Location", "Status", "Action"]
+                for i, col_name in enumerate(cols): h[i].markdown(f"**{col_name}**")
+                
+                for _, row in df_sn_list.iterrows():
+                    r = st.columns([1, 3, 3, 2, 2, 2])
+                    r[0].write(row['id'])
+                    r[1].write(row['part_number'])
+                    r[2].write(row['serial_number'])
+                    r[3].write(row['current_location'])
+                    r[4].write(row['status'])
+                    
+                    btn_edit, btn_del = r[5].columns(2)
+                    if btn_edit.button("📝", key=f"ed_{row['id']}"):
+                        st.session_state.update({'edit_mode':True, 'edit_id':row['id'], 'edit_pn':row['part_number'], 
+                                                 'edit_sn':row['serial_number'], 'edit_loc':row['current_location'], 'edit_stat':row['status']})
+                        st.rerun()
+                    if btn_del.button("🗑️", key=f"dl_{row['id']}"):
+                        delete_sn(row['id'])
+            # --- FORM EDIT MASTER S/N (Floating Expander) ---
+            if st.session_state.get('edit_mode'):
+                with st.expander("🛠️ EDIT DATA SERIAL NUMBER", expanded=True):
+                    with st.form("form_edit_sn"):
+                        st.write(f"Editing ID: {st.session_state['edit_id']}")
+                        new_pn = st.text_input("Part Number", value=st.session_state['edit_pn'])
+                        new_sn = st.text_input("Serial Number", value=st.session_state['edit_sn'])
+                        new_loc = st.text_input("Location", value=st.session_state['edit_loc'])
+                        new_stat = st.selectbox("Status", ["S", "US", "AR", "SCRAP"], 
+                                                index=["S", "US", "AR", "SCRAP"].index(st.session_state['edit_stat']) if st.session_state['edit_stat'] in ["S", "US", "AR", "SCRAP"] else 0)
+                
+                        c_save, c_cancel = st.columns(2)
+                        if c_save.form_submit_button("✅ Save Changes"):
+                            update_sn(st.session_state['edit_id'], new_pn, new_sn, new_loc, new_stat)
+                            st.session_state['edit_mode'] = False
+                    
+                        if c_cancel.form_submit_button("❌ Cancel"):
+                            st.session_state['edit_mode'] = False
+                            st.rerun()
+            conn.close()
 
     # ==========================================
     # HALAMAN: INCOMING/OUTGOING
@@ -229,150 +204,57 @@ def show(page_name):
         tab_in, tab_out, tab_hist = st.tabs(["📥 Incoming", "📤 Outgoing", "📜 History"])
 
         with tab_in:
-            # MEMULAI FORM
-            with st.form(key="form_incoming_aircraft_final"):
-                col1, col2 = st.columns(2)
-                
-                # --- FIELD YANG SEBELUMNYA HILANG KITA KEMBALIKAN ---
-                doc_no = col1.text_input("Doc Number (PO/RO)")
-                date_rec = col1.date_input("Date Received")
-                
-                # Ambil list PN (pake try-except supaya kalau tabel error, field gak hilang)
-                pn_options = []
-                try:
-                    conn = create_connection()
-                    df_pn = pd.read_sql("SELECT part_number FROM master_part_number", conn)
-                    pn_options = df_pn["part_number"].tolist()
-                    conn.close()
-                except:
-                    pn_options = ["Master P/N Belum Terisi"]
-
-                sel_pn = col2.selectbox("Select P/N", options=pn_options)
-                sn_in = col2.text_input("S/N Incoming")
-                
-                src = col1.text_input("Received From (Vendor/Aircraft)")
-                loc = col2.selectbox("Storage Location", ["HO Store", "CGK Store"])
-                cond = st.radio("Condition", ["S (Serviceable)", "U (Unserviceable)"], horizontal=True)
-
-                # --- TOMBOL SUBMIT (WAJIB ADA DI SINI) ---
-                submit_btn = st.form_submit_button("Confirm Receipt")
-
-                if submit_btn:
-                    if not sn_in or "Belum Terisi" in str(sel_pn):
-                        st.warning("Mohon lengkapi P/N dan S/N terlebih dahulu.")
-                    else:
-                        # PROSES SIMPAN KE AIRCRAFT.DB
-                        conn = create_connection()
-                        curr = conn.cursor()
-                        try:
-                            # 1. Update Lokasi (Pakai try per kolom agar tidak crash)
-                            try:
-                                curr.execute("UPDATE master_serial_number SET status=?, current_location='Store', location=? WHERE serial_number=?", 
-                                           (cond[0], loc, sn_in))
-                            except: pass # Lewati jika kolom belum ada
-                            
-                            # 2. Catat Transaksi
-                            curr.execute("""
-                                INSERT INTO inventory_transaction (date, doc_number, part_number, serial_number, store_location, status) 
-                                VALUES (?,?,?,?,?,?)
-                            """, (str(date_rec), doc_no, sel_pn, sn_in, loc, cond[0]))
-                            
-                            conn.commit()
-                            st.success(f"✅ Data S/N {sn_in} Berhasil Disimpan!")
-                        except Exception as e:
-                            st.error(f"Gagal simpan: {e}")
-                        finally:
-                            conn.close()
-        with tab_out:
-            st.write("📤 **Aircraft Installation / Parts Issuance**")
-            with st.form(key="form_outgoing_aircraft"):
+            with st.form("form_incoming"):
                 c1, c2 = st.columns(2)
-                date_out = c1.date_input("Date Out / Installed")
-                doc_ref = c1.text_input("Reference (Work Order/REQ)")
+                doc = c1.text_input("Doc Number (PO/RO/Note)")
+                dt_in = c1.date_input("Date Received", key="dt_in")
                 
-                # Ambil list S/N yang statusnya ada di 'Store' (Serviceable)
-                sn_options = []
-                try:
+                conn = create_connection()
+                pn_list = pd.read_sql("SELECT part_number FROM master_part_number", conn)['part_number'].tolist()
+                conn.close()
+                
+                sel_pn_in = c2.selectbox("Part Number", options=pn_list)
+                sn_in = c2.text_input("Serial Number Incoming")
+                loc_in = st.selectbox("Storage Destination", ["HO Store", "CGK Store"])
+                
+                if st.form_submit_button("Confirm Receipt"):
                     conn = create_connection()
-                    query = "SELECT serial_number FROM master_serial_number WHERE current_location = 'Store'"
-                    df_sn = pd.read_sql(query, conn)
-                    sn_options = df_sn["serial_number"].tolist()
+                    curr = conn.cursor()
+                    # 1. Update/Insert ke Master S/N
+                    curr.execute("UPDATE master_serial_number SET current_location=?, status='S' WHERE serial_number=?", (loc_in, sn_in))
+                    # 2. Catat Log
+                    curr.execute("INSERT INTO inventory_transaction (date, doc_number, part_number, serial_number, store_location, status) VALUES (?,?,?,?,?,?)",
+                                 (str(dt_in), doc, sel_pn_in, sn_in, loc_in, 'IN'))
+                    conn.commit()
                     conn.close()
-                except:
-                    sn_options = []
+                    st.success(f"S/N {sn_in} received at {loc_in}")
 
-                sel_sn = c2.selectbox("Select S/N to Issue", options=sn_options if sn_options else ["No Stock Available"])
-                ac_reg = c2.text_input("Installed on Aircraft (e.g. PK-OCA)")
-                rem = st.text_area("Remark / Reason")
-
-                submit_out = st.form_submit_button("Confirm Issue")
-
-                if submit_out:
-                    if "No Stock" in str(sel_sn) or not ac_reg:
-                        st.warning("Mohon pilih S/N dan isi Registrasi Pesawat.")
-                    else:
-                        conn = create_connection()
+        with tab_out:
+            with st.form("form_outgoing"):
+                c1, c2 = st.columns(2)
+                doc_out = c1.text_input("Work Order / Reference")
+                dt_out = c1.date_input("Date Issue")
+                
+                conn = create_connection()
+                # Hanya S/N yang ada di Store yang bisa keluar
+                df_avail = pd.read_sql("SELECT serial_number FROM master_serial_number WHERE current_location LIKE '%Store%'", conn)
+                sn_avail = df_avail['serial_number'].tolist() if not df_avail.empty else ["No Stock"]
+                
+                sel_sn_out = c2.selectbox("Select S/N to Issue", options=sn_avail)
+                ac_reg = c2.text_input("Install on Aircraft (Registration)")
+                
+                if st.form_submit_button("Confirm Issue"):
+                    if sel_sn_out != "No Stock":
                         curr = conn.cursor()
-                        try:
-                            # Update status S/N menjadi terpasang di pesawat
-                            curr.execute("""
-                                UPDATE master_serial_number 
-                                SET current_location='Aircraft', location=? 
-                                WHERE serial_number=?
-                            """, (ac_reg, sel_sn))
-                            
-                            # Catat di transaksi sebagai Outgoing
-                            curr.execute("""
-                                INSERT INTO inventory_transaction (date, doc_number, serial_number, store_location, remark, status) 
-                                VALUES (?,?,?,?,?,?)
-                            """, (str(date_out), doc_ref, sel_sn, ac_reg, rem, 'OUT'))
-                            
-                            conn.commit()
-                            st.success(f"✅ S/N {sel_sn} berhasil dikeluarkan ke {ac_reg}")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Gagal Outgoing: {e}")
-                        finally:
-                            conn.close()
+                        curr.execute("UPDATE master_serial_number SET current_location='Aircraft', status='S' WHERE serial_number=?", (sel_sn_out,))
+                        curr.execute("INSERT INTO inventory_transaction (date, doc_number, serial_number, store_location, status, remark) VALUES (?,?,?,?,?,?)",
+                                     (str(dt_out), doc_out, sel_sn_out, ac_reg, 'OUT', f"Installed on {ac_reg}"))
+                        conn.commit()
+                        st.success(f"S/N {sel_sn_out} issued to {ac_reg}")
+                    conn.close()
 
         with tab_hist:
-            st.write("📜 **Transaction Logs (Aircraft.db)**")
-            
-            # Buat koneksi untuk membaca history
             conn = create_connection()
-            try:
-                # Kita ambil data terbaru ada di paling atas (ORDER BY id DESC)
-                df_history = pd.read_sql("SELECT * FROM inventory_transaction ORDER BY id DESC", conn)
-                
-                if not df_history.empty:
-                    # Menampilkan tabel yang bisa di-search dan di-filter
-                    st.dataframe(df_history, use_container_width=True, hide_index=True)
-                    
-                    # Opsi download history ke Excel/CSV jika Bapak butuh
-                    csv = df_history.to_csv(index=False).encode('utf-8')
-                    st.download_button("📥 Download History (.csv)", data=csv, file_name="inventory_history.csv", mime="text/csv")
-                else:
-                    st.info("Belum ada data transaksi masuk atau keluar.")
-                    
-            except Exception as e:
-                st.error(f"Gagal memuat history: {e}")
-                # Tombol darurat jika tabel ternyata belum ada di aircraft.db
-                if st.button("Initialize History Table"):
-                    curr = conn.cursor()
-                    curr.execute("""
-                        CREATE TABLE IF NOT EXISTS inventory_transaction (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            date TEXT, 
-                            doc_number TEXT, 
-                            part_number TEXT, 
-                            serial_number TEXT, 
-                            store_location TEXT, 
-                            received_from TEXT,
-                            status TEXT, 
-                            remark TEXT
-                        )
-                    """)
-                    conn.commit()
-                    st.rerun()
-            finally:
-                conn.close()                   
+            df_hist = pd.read_sql("SELECT * FROM inventory_transaction ORDER BY id DESC", conn)
+            st.dataframe(df_hist, use_container_width=True)
+            conn.close()                   

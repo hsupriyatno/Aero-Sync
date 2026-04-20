@@ -1,31 +1,99 @@
 import streamlit as st
 from database import create_connection
+import pandas as pd
+
+def get_current_totals(ac_reg):
+    conn = create_connection()
+    try:
+        query_init = f"SELECT tsn, csn, tsn_e1, csn_e1, tsn_e2, csn_e2 FROM catalog WHERE ac_reg = '{ac_reg}'"
+        df_init = pd.read_sql(query_init, conn)
+        
+        query_accum = f"SELECT SUM(flight_hours) as total_fh, SUM(landings) as total_ld FROM aml_utilization WHERE ac_reg = '{ac_reg}'"
+        df_accum = pd.read_sql(query_accum, conn)
+        
+        if not df_init.empty:
+            # Pastikan jika NULL di database, dianggap 0.0 atau 0
+            tsn = df_init['tsn'].iloc[0] or 0.0
+            csn = df_init['csn'].iloc[0] or 0
+            tsn_e1 = df_init['tsn_e1'].iloc[0] or 0.0
+            csn_e1 = df_init['csn_e1'].iloc[0] or 0
+            tsn_e2 = df_init['tsn_e2'].iloc[0] or 0.0
+            csn_e2 = df_init['csn_e2'].iloc[0] or 0
+            
+            accum_fh = df_accum['total_fh'].iloc[0] or 0.0
+            accum_ld = df_accum['total_ld'].iloc[0] or 0
+            
+            base_fh = tsn + accum_fh
+            base_ld = csn + accum_ld
+            base_e1h = tsn_e1 + accum_fh
+            base_e1c = csn_e1 + accum_ld
+            base_e2h = tsn_e2 + accum_fh
+            base_e2c = csn_e2 + accum_ld
+            
+            return base_fh, base_ld, base_e1h, base_e1c, base_e2h, base_e2c
+            
+        return 0.0, 0, 0.0, 0, 0.0, 0
+    finally:
+        conn.close()
 
 def show(page_name):
-    st.header("📝 Aircraft Maintenance Log (AML) Entry")
+    st.subheader("📝 Aircraft Maintenance Log (AML) Entry")
     
-    # --- SECTION PARENT: UTILIZATION ---
-    st.subheader("1. Utilization Record (Parent)")
-    with st.container(border=True):
-        col1, col2, col3, col4 = st.columns(4)
-        aml_no = col1.text_input("AML No")
-        ac_reg = col2.selectbox("A/C Reg", ["PK-OCA", "PK-OCB", "PK-OCC"]) # Ambil dari DB nantinya
-        ac_type = col3.text_input("A/C Type", value="Bell 412")
-        date = col4.date_input("Date")
+    # --- 1. AMBIL DAFTAR PESAWAT DARI DATABASE ---
+    conn = create_connection()
+    ac_list = pd.read_sql("SELECT ac_reg FROM catalog", conn)['ac_reg'].tolist()
+    conn.close()
+    
+    # --- 2. INPUT FIELD (BARIS ATAS) ---
+    col_a, col_b, col_c, col_d = st.columns(4)
+    with col_a:
+        aml_no = st.text_input("AML No")
+    with col_b:
+        selected_ac = st.selectbox("A/C Reg", ac_list) # Variabel selected_ac dibuat di sini
+    with col_c:
+        ac_type = st.text_input("A/C Type") 
+    with col_d:
+        date_entry = st.date_input("Date")
 
-        c1, c2, c3, c4 = st.columns(4)
-        departure = c1.text_input("Departure")
-        arrival = c2.text_input("Arrival")
-        flight_hours = c3.number_input("Flight Hours", step=0.1)
-        landings = c4.number_input("Landings", step=1)
+    # --- 3. INPUT FIELD (BARIS KEDUA) ---
+    col_e, col_f, col_g, col_h = st.columns(4)
+    with col_e:
+        departure = st.text_input("Departure")
+    with col_f:
+        arrival = st.text_input("Arrival")
+    with col_g:
+        input_fh = st.number_input("Flight Hours", min_value=0.0, step=0.1, format="%.2f")
+    with col_h:
+        input_ld = st.number_input("Landings", min_value=0, step=1)
 
-        c11, c12, c13, c14, c15, c16 = st.columns(6)
-        total_af_hours = c11.text_input("Total AF Hours")
-        total_af_landings = c12.text_input("Total AF Landings")
-        total_e1_hours = c13.text_input("Total E1 Hours")
-        total_e1_cycles = c14.text_input("Total E1 Cycles")
-        total_e2_hours = c15.text_input("Total E2 Hours")
-        total_e2_cycles = c16.text_input("Total E2 Cycles")
+    # --- 4. LOGIKA PENGHITUNGAN (WAJIB ADA DI SINI) ---
+    # Kita panggil data terakhir dari database berdasarkan selected_ac
+    base_fh, base_ld, base_e1h, base_e1c, base_e2h, base_e2c = get_current_totals(selected_ac)
+
+    # Kita jumlahkan saldo awal + input baru untuk ditampilkan secara real-time
+    current_total_af_h = base_fh + input_fh
+    current_total_af_l = base_ld + input_ld
+    current_total_e1_h = base_e1h + input_fh
+    current_total_e1_c = base_e1c + input_ld
+    current_total_e2_h = base_e2h + input_fh
+    current_total_e2_c = base_e2c + input_ld
+
+    # --- 5. TAMPILKAN HASILNYA DI FIELD BAWAH (READ-ONLY) ---
+    st.write("---")
+    st.info("💡 Auto-Calculated Totals (Current + New Entry)")
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    with c1:
+        st.text_input("Total AF Hours", value=f"{current_total_af_h:.2f}", disabled=True)
+    with c2:
+        st.text_input("Total AF Landings", value=str(int(current_total_af_l)), disabled=True)
+    with c3:
+        st.text_input("Total E1 Hours", value=f"{current_total_e1_h:.2f}", disabled=True)
+    with c4:
+        st.text_input("Total E1 Cycles", value=str(int(current_total_e1_c)), disabled=True)
+    with c5:
+        st.text_input("Total E2 Hours", value=f"{current_total_e2_h:.2f}", disabled=True)
+    with c6:
+        st.text_input("Total E2 Cycles", value=str(int(current_total_e2_c)), disabled=True)
 
 
     st.divider()
@@ -94,43 +162,74 @@ def show(page_name):
                 ins_sn = col_ins.text_input(f"On S/N {j}", key=f"ins_sn_{j}")
                 comp_replacements.append({"pos": pos, "p_desc": p_desc, "rem_pn": rem_pn})
 
-
-# --- BUTTON SAVE (LANJUTAN) ---
-    st.divider()
+# --- BUTTON SAVE ---
     if st.button("💾 Submit AML Entry", use_container_width=True, type="primary"):
-        if aml_no: # Validasi sederhana, minimal nomor AML diisi
+        if aml_no:
             conn = create_connection()
             curr = conn.cursor()
             try:
-                # 1. Simpan Parent (Utilization)
+                # 1. SIMPAN DATA UTAMA (Parent)
                 curr.execute("""
                     INSERT INTO aml_utilization (aml_no, ac_type, ac_reg, date, departure, arrival, flight_hours, landings)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (aml_no, ac_type, ac_reg, str(date), dep, arr, fh, ldg))
+                """, (aml_no, ac_type, selected_ac, str(date_entry), departure, arrival, input_fh, input_ld))
+            
+                # 2. SIMPAN ENGINE PARAMETER (Child 1)
+                # Pastikan tabel 'engine_parameters' sudah dibuat di database.py
+                curr.execute("""
+                    INSERT INTO engine_parameters (aml_no, press_alt, oat, ias, tq1, np1, t51, ng1, ff1, ot1, op1, oa1, tq2, np2, t52, ng2, ff2, ot2, op2, oa2)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (aml_no, press_alt, oat, ias, tq1, np1, t51, ng1, ff1, ot1, op1, oa1, tq2, np2, t52, ng2, ff2, ot2, op2, oa2))
 
-                # 2. Simpan Child: Pilot Reports (Hanya jika Deskripsi diisi)
-                for pr in pilot_reports:
-                    if pr['desc']: # Jika ada deskripsi, baru simpan
+                # 3. SIMPAN PILOT REPORTS (Child 2 - Looping)
+                for report in pilot_reports:
+                    if report['id']: # Hanya simpan jika Defect ID diisi
                         curr.execute("""
-                            INSERT INTO aml_pilot_report (aml_no, defect_id, defect_desc, rectification, lame)
+                            INSERT INTO aml_pilot_report (aml_no, defect_id, description, rectification, lame)
                             VALUES (?, ?, ?, ?, ?)
-                        """, (aml_no, pr['id'], pr['desc'], pr['rect'], pr['lame']))
+                        """, (aml_no, report['id'], report['desc'], report['rect'], report['lame']))
 
-                # 3. Simpan Child: Component Replacements (Hanya jika P/N diisi)
-                for cr in comp_replacements:
-                    if cr['p_desc']: # Jika ada nama part, baru simpan
+                # 4. SIMPAN COMPONENT REPLACEMENT (Child 3 - Looping)
+                for comp in comp_replacements:
+                    if comp['pos']: # Hanya simpan jika Position dipilih (E1/E2/AF)
                         curr.execute("""
-                            INSERT INTO aml_component_replacement (aml_no, pos, part_desc, rem_pn)
-                            VALUES (?, ?, ?, ?)
-                        """, (aml_no, cr['pos'], cr['p_desc'], cr['rem_pn']))
-
+                            INSERT INTO aml_component_replacement (aml_no, pos, part_desc, rem_pn, rem_sn, ins_pn, ins_sn, grn)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (aml_no, comp['pos'], comp['p_desc'], comp['rem_pn'], comp['rem_sn'], comp['ins_pn'], comp['ins_sn'], comp['grn']))
+            
                 conn.commit()
-                st.success(f"✅ Sukses! AML No {aml_no} berhasil disimpan ke database.")
-                st.balloons() # Efek perayaan kecil
-                
+                st.success(f"✅ AML No {aml_no} and all details saved successfully!")
+                st.rerun()
+            
             except Exception as e:
+                conn.rollback() # Batalkan semua jika salah satu gagal
                 st.error(f"❌ Gagal menyimpan: {e}")
             finally:
                 conn.close()
+
+    # --- TABEL DATA & FITUR DELETE (Di bawah tombol Submit) ---
+    st.divider()
+    st.subheader("📋 Registered AML Records")
+    
+    conn = create_connection()
+    try:
+        # Mengambil data untuk tabel
+        df_aml = pd.read_sql("SELECT aml_no, ac_reg, date, flight_hours, landings FROM aml_utilization ORDER BY date DESC", conn)
+        
+        if not df_aml.empty:
+            for _, row in df_aml.iterrows():
+                with st.expander(f"AML: {row['aml_no']} | {row['ac_reg']} | {row['date']}"):
+                    col_info, col_act = st.columns([3, 1])
+                    col_info.write(f"Hours: {row['flight_hours']} | Landings: {row['landings']}")
+                    
+                    if col_act.button("🗑️ Delete", key=f"del_{row['aml_no']}"):
+                        curr = conn.cursor()
+                        curr.execute("DELETE FROM aml_utilization WHERE aml_no = ?", (row['aml_no'],))
+                        conn.commit()
+                        st.rerun()
         else:
-            st.warning("⚠️ Mohon isi Nomor AML terlebih dahulu sebelum menyimpan.")        
+            st.info("Belum ada data AML yang tersimpan.")
+    except:
+        pass
+    finally:
+        conn.close()        

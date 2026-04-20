@@ -109,9 +109,28 @@ def show():
         if df_master_pn.empty:
             df_master_pn = pd.read_sql("SELECT part_number, description FROM master_part_number", conn)
             
-        pn_list = df_master_pn['part_number'].tolist()
-        options_pn = ["-- Pilih P/N --"] + pn_list
-        selected_pn = st.selectbox("Pilih Part Number (Interchangeable)", options=options_pn, key="pn_trigger_main")
+        # --- LOGIKA PARTS INTERCHANGE ---
+        # Ambil P/N utama dari master
+        main_pn_list = df_master_pn['part_number'].tolist()
+        final_pn_options = []
+
+        for pn in main_pn_list:
+            final_pn_options.append(pn)
+            # Cari apakah ada P/N pengganti (Interchange) untuk P/N ini
+            curr.execute("""
+                SELECT alternate_pn, interchange_type FROM part_interchange 
+                WHERE original_pn = ?
+            """, (pn,))
+            rows = curr.fetchall()
+            for row in rows:
+                alt_pn, ic_type = row
+                label = f"{alt_pn} (Alt for {pn})" if ic_type == 'TWO-WAY' else f"{alt_pn} (Supersedes {pn})"
+                if alt_pn not in final_pn_options:
+                    final_pn_options.append(alt_pn)
+
+        # Masukkan ke Selectbox Bapak
+        options_pn = ["-- Pilih P/N --"] + final_pn_options
+        selected_pn = st.selectbox("Pilih Part Number (Interchangeable)", options=options_pn)
 
         comp_desc = st.session_state.target_comp
         sn_options = []
@@ -120,7 +139,9 @@ def show():
             comp_desc = res_desc.values[0] if not res_desc.empty else ""
             curr.execute("""
                 SELECT serial_number FROM master_serial_number 
-                WHERE part_number = ? AND (current_location LIKE '%Store%' OR location = ?)
+                WHERE part_number = ? 
+                AND (current_location NOT LIKE '%Aircraft%')
+                AND (current_location LIKE '%Store%' OR location = ?)
             """, (selected_pn, selected_reg))
             sn_options = [r[0] for r in curr.fetchall()]
 
@@ -190,6 +211,16 @@ def show():
                     else:
                         final_p_sn = "Airframe"
 
+                    # Cek apakah P/N yang dipilih adalah barang yang sudah ditarik (Superseded)
+                curr.execute("""
+                    SELECT alternate_pn FROM part_interchange 
+                    WHERE original_pn = ? AND interchange_type = 'ONE-WAY'
+                """, (selected_pn,))
+                is_outdated = curr.fetchone()
+
+                if is_outdated:
+                    st.warning(f"⚠️ Perhatian: P/N {selected_pn} sebenarnya sudah digantikan oleh {is_outdated[0]}. Pastikan ini sudah sesuai dengan manual.")
+
                     # --- JALANKAN INSERT ---
                     try:
                         curr.execute("""
@@ -223,9 +254,25 @@ def show():
             r2.write(f"{row['NAME']} (PN: {row['PN']} / SN: {row['SN']})")
             r3.write(f"Parent: {row['PARENT_SN']}")
             if r4.button("🗑️", key=f"del_{row['id']}"):
-                curr.execute("DELETE FROM installed_components WHERE id = ?", (row['id'],))
-                conn.commit()
-                st.rerun()
-            st.divider()
+                # 1. Ambil dulu Serial Number yang mau dihapus sebelum datanya hilang
+                curr.execute("SELECT serial_number FROM installed_components WHERE id = ?", (row['id'],))
+                sn_to_release = curr.fetchone()
+    
+                if sn_to_release:
+                    sn_val = sn_to_release[0]
+        
+                    # 2. Kembalikan lokasi di Master Serial Number ke HO Store
+                    curr.execute("""
+                        UPDATE master_serial_number 
+                        SET current_location = 'HO Store', location = 'None' 
+                        WHERE serial_number = ?
+                    """, (sn_val,))
+        
+                    # 3. Baru hapus data instalasinya
+                    curr.execute("DELETE FROM installed_components WHERE id = ?", (row['id'],))
+        
+                    conn.commit()
+                    st.success(f"S/N {sn_val} telah dilepas dan kembali ke HO Store.")
+                    st.rerun()
         
     conn.close()
