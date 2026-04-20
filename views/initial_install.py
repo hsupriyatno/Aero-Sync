@@ -5,7 +5,6 @@ from database import create_connection
 import io
 from datetime import datetime
 
-# --- Fungsi Report Tetap Sama ---
 def generate_component_report(df, ac_reg, ac_type):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
