@@ -1,9 +1,6 @@
 import sqlite3
 import os
 
-import sqlite3
-import os
-
 def create_connection():
     # 1. Cek apakah sedang di laptop Bapak (Windows)
     local_path = r"C:\DATA\01. RELIABILITY PROJECT\DATABASE PROJECT\AERO-SYNCH\aircraft.db"
@@ -46,8 +43,8 @@ def init_db():
     # 3. MASTER PART NUMBER
     curr.execute('''CREATE TABLE IF NOT EXISTS master_part_number (
         part_number TEXT PRIMARY KEY, description TEXT, ata_chapter TEXT,
-        tbo REAL, cbo INTEGER, dbo INTEGER, 
-        category TEXT, shelf INTEGER, date_registered TEXT)''')
+        tbo_hours REAL, tbo_cycles INTEGER, tbo_calendar INTEGER,
+        category TEXT, shelf_life INTEGER, date_registered TEXT)''')
 
     # 4. MASTER SERIAL NUMBER
     curr.execute('''CREATE TABLE IF NOT EXISTS master_serial_number (
@@ -102,6 +99,86 @@ def init_db():
         PRIMARY KEY (original_pn, alternate_pn)
     )''')
 
+# Tabel untuk Fleet Dashboard (Solusi error: no such table aircraft_status)
+    curr.execute("""
+        CREATE TABLE IF NOT EXISTS aircraft_status (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            aircraft_type TEXT,
+            registration TEXT,
+            flight_hours REAL
+        )
+    """)
+
+    # Tabel untuk Deferred Defect (OPEN/CLOSED)
+    curr.execute("""
+        CREATE TABLE IF NOT EXISTS log_hil (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            description TEXT,
+            status TEXT DEFAULT 'OPEN'
+        )
+    """)
+
+    # Tabel untuk Maintenance Schedule
+    curr.execute("""
+        CREATE TABLE IF NOT EXISTS maintenance_schedule (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            registration TEXT,
+            task_description TEXT,
+            due_date TEXT
+        )
+    """)
+
+    curr.execute("""
+        CREATE TABLE IF NOT EXISTS aml_utilization (
+            aml_no TEXT PRIMARY KEY,
+            ac_type TEXT,
+            ac_reg TEXT,
+            date TEXT,
+            departure TEXT,
+            arrival TEXT,
+            flight_hours REAL,
+            landings INTEGER
+        )
+    """)
+
+    curr.execute("""
+        CREATE TABLE IF NOT EXISTS aml_pilot_report (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            aml_no TEXT,
+            defect_desc TEXT,
+            rectification TEXT,
+            lame TEXT,
+            status TEXT DEFAULT 'OPEN'
+        )
+    """)
+
+    curr.execute("""
+        CREATE TABLE IF NOT EXISTS aml_component_replacement (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            aml_no TEXT,
+            pos TEXT,
+            part_desc TEXT,
+            rem_pn TEXT,
+            rem_sn TEXT,
+            ins_pn TEXT,
+            ins_sn TEXT,
+            grn TEXT,
+            rectification TEXT,
+            lame TEXT,
+            status TEXT DEFAULT 'OPEN'
+        )
+    """)
+
+    curr.execute("""
+        CREATE TABLE IF NOT EXISTS engine_parameters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            aml_no TEXT,
+            press_alt REAL, oat REAL, ias REAL,
+            tq1 REAL, np1 REAL, t51 REAL, ng1 REAL, ff1 REAL, ot1 REAL, op1 REAL, oa1 REAL,
+            tq2 REAL, np2 REAL, t52 REAL, ng2 REAL, ff2 REAL, ot2 REAL, op2 REAL, oa2 REAL
+        )
+    """)
+ 
     conn.commit()
     conn.close()
     print("Database AERO-SYNCH (10 Tables) initialized successfully.")
