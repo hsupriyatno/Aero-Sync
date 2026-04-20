@@ -5,3 +5,4 @@ openpyxl
 streamlit-option-menu
 fpdf2
 graphviz
+plotly
