@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import pandas as pd
 
 def create_connection():
     # 1. Cek apakah sedang di laptop Bapak (Windows)
@@ -99,7 +100,7 @@ def init_db():
         PRIMARY KEY (original_pn, alternate_pn)
     )''')
 
-# Tabel untuk Fleet Dashboard (Solusi error: no such table aircraft_status)
+    # 10. Tabel untuk Fleet Dashboard (Solusi error: no such table aircraft_status)
     curr.execute("""
         CREATE TABLE IF NOT EXISTS aircraft_status (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -109,25 +110,44 @@ def init_db():
         )
     """)
 
-    # Tabel untuk Deferred Defect (OPEN/CLOSED)
+    # 11. Tabel untuk Deferred Defect (OPEN/CLOSED)
     curr.execute("""
-        CREATE TABLE IF NOT EXISTS log_hil (
+        CREATE TABLE IF NOT EXISTS deferred_defects (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            aml_no TEXT,
+            ac_reg TEXT,
             description TEXT,
+            defect_no TEXT,
+            defect_id TEXT,
+            category TEXT,
+            rectification TEXT,
+            due_date TEXT,
             status TEXT DEFAULT 'OPEN'
         )
     """)
 
-    # Tabel untuk Maintenance Schedule
+    # 12. Tabel untuk Maintenance Schedule
     curr.execute("""
         CREATE TABLE IF NOT EXISTS maintenance_schedule (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            registration TEXT,
+            rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT,
+            ac_reg TEXT,
+            ac_type TEXT,
             task_description TEXT,
-            due_date TEXT
+            duration_days INTEGER,
+            last_done_hours REAL,
+            last_done_cycles INTEGER,
+            last_done_date TEXT,
+            next_due_hours REAL,
+            next_due_cycles INTEGER,
+            next_due_date TEXT,
+            remaining_hours REAL,
+            remaining_cycles INTEGER,
+            remaining_days INTEGER
         )
     """)
 
+    # 13. Tabel untuk AML Utilization
     curr.execute("""
         CREATE TABLE IF NOT EXISTS aml_utilization (
             aml_no TEXT PRIMARY KEY,
@@ -140,18 +160,19 @@ def init_db():
             landings INTEGER
         )
     """)
-
+    # 14. Tabel untuk AML Pilot Report
     curr.execute("""
         CREATE TABLE IF NOT EXISTS aml_pilot_report (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             aml_no TEXT,
+            defect_id TEXT,
             defect_desc TEXT,
             rectification TEXT,
             lame TEXT,
             status TEXT DEFAULT 'OPEN'
         )
     """)
-
+    # 15. Tabel untuk AML Component Replacement
     curr.execute("""
         CREATE TABLE IF NOT EXISTS aml_component_replacement (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -168,17 +189,40 @@ def init_db():
             status TEXT DEFAULT 'OPEN'
         )
     """)
-
+    # 16. Tabel untuk Maintenance Catalog
     curr.execute("""
-        CREATE TABLE IF NOT EXISTS engine_parameters (
+        CREATE TABLE IF NOT EXISTS maintenance_catalog (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            aml_no TEXT,
-            press_alt REAL, oat REAL, ias REAL,
-            tq1 REAL, np1 REAL, t51 REAL, ng1 REAL, ff1 REAL, ot1 REAL, op1 REAL, oa1 REAL,
-            tq2 REAL, np2 REAL, t52 REAL, ng2 REAL, ff2 REAL, ot2 REAL, op2 REAL, oa2 REAL
+            aircraft_type TEXT,
+            task_id TEXT,
+            task_title TEXT,
+            task_description TEXT,
+            interval_hours REAL,
+            interval_cycles INTEGER,
+            interval_calendar INTEGER,
+            duration_days INTEGER DEFAULT 0  -- Pastikan tidak ada koma di baris terakhir sebelum tutup kurung
         )
     """)
  
     conn.commit()
     conn.close()
-    print("Database AERO-SYNCH (10 Tables) initialized successfully.")
+
+def update_aircraft(ac_reg, ac_type, msn, tsn, csn):
+    """Update data pesawat berdasarkan Registrasi."""
+    conn = create_connection()
+    curr = conn.cursor()
+    curr.execute("""
+        UPDATE catalog 
+        SET ac_type=?, msn=?, tsn=?, csn=?
+        WHERE ac_reg=?
+    """, (ac_type, msn, tsn, csn, ac_reg))
+    conn.commit()
+    conn.close()
+
+def delete_aircraft(ac_reg):
+    """Hapus data pesawat berdasarkan Registrasi."""
+    conn = create_connection()
+    curr = conn.cursor()
+    curr.execute("DELETE FROM catalog WHERE ac_reg=?", (ac_reg,))
+    conn.commit()
+    conn.close()

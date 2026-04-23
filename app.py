@@ -76,8 +76,8 @@ def get_index(options, current_page):
         return 0
 
 # 5. DEFINISI MENU (Sangat Penting: Harus di atas sebelum dipanggil selectbox)
-cat_opts = ["", "Aircraft Catalog", "Structure Management", "Initial Component Installed"]
-maint_opts = ["", "AML Entry", "Maintenance Package"]
+cat_opts = ["", "Aircraft Catalog", "Structure Management", "Initial Component Installed", "Maintenance Catalog"]
+maint_opts = ["", "AML Entry", "Maintenance Package / Work Pack", "Update Maintenance Tasks"]
 status_opts = ["", "Aircraft Utilization Record", "Airworthiness Directive Status", "Service Bulletin Status"]
 eng_opts = ["", "Engineering Order", "Engineering Evaluation", "Deferred Defect"]
 inv_opts = ["", "Parts Catalog", "Parts In Stock", "Parts Usage History", "Incoming/Outgoing", "Allotment"]
