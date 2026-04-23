@@ -1,19 +1,22 @@
 import streamlit as st
 import pandas as pd
 import graphviz
+import sqlite3
+from datetime import datetime
 from database import create_connection
 
 def show(page_name):
-    # Inject CSS untuk estetika UI
+    # --- CSS Injection ---
     st.markdown("""
         <style>
-        .small-font { font-size:24px !important; font-weight: bold; color: #1E3A8A; }
-        .section-font { font-size:20px !important; font-weight: bold; margin-top: 10px; }
+        .section-font { font-size:20px !important; font-weight: bold; margin-top: 10px; color: #1E3A8A; }
         </style>
     """, unsafe_allow_html=True)
 
-    conn = create_connection()
-    
+    # Gunakan satu database yang sama untuk semua fitur (misal: aero_synch.db)
+    db_name = 'aero_synch.db' 
+    conn = create_connection() # Menggunakan fungsi dari database.py
+
     try:
         # === HALAMAN 1: AIRCRAFT CATALOG ===
         if page_name == "Aircraft Catalog":
@@ -40,15 +43,61 @@ def show(page_name):
                     st.rerun()
 
             st.divider()
+            # Ambil data dari database
             df_list = pd.read_sql_query("SELECT ac_reg, ac_type, msn, tsn, csn FROM catalog", conn)
+            
             if not df_list.empty:
                 st.subheader("Registered Fleet")
-                st.dataframe(df_list, use_container_width=True)    
+                st.dataframe(df_list, use_container_width=True) 
+                
+                st.divider()
+                st.subheader("🛠️ Edit or Remove Aircraft")
+
+                # Pilih pesawat yang mau di-edit/hapus (MENGGUNAKAN df_list)
+                list_ac = df_list['ac_reg'].tolist()
+                selected_ac = st.selectbox("Select Registration to Edit/Delete", list_ac)
+
+                if selected_ac:
+                    # Ambil data lama untuk ditampilkan di input
+                    row = df_list[df_list['ac_reg'] == selected_ac].iloc[0]
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        # Pastikan pilihan type sesuai dengan yang ada di database atau list
+                        current_types = ["DHC6-300", "DHC6-400", "B737-800", "B737-MAX", "BELL 412"]
+                        # Jika type lama tidak ada di list, tambahkan sementara agar tidak error
+                        if row['ac_type'] not in current_types:
+                            current_types.append(row['ac_type'])
+                            
+                        new_type = st.selectbox("Aircraft Type", current_types, 
+                                               index=current_types.index(row['ac_type']))
+                        new_msn = st.text_input("MSN", value=row['msn'])
+                    with col2:
+                        new_tsn = st.number_input("Total Hours (TSN)", value=float(row['tsn']))
+                        new_csn = st.number_input("Total Cycles (CSN)", value=int(row['csn']))
+
+                    btn_edit, btn_delete = st.columns(2)
+                    
+                    with btn_edit:
+                        if st.button("💾 Save Changes", use_container_width=True):
+                            # Memanggil fungsi dari database.py
+                            from database import update_aircraft
+                            update_aircraft(selected_ac, new_type, new_msn, new_tsn, new_csn)
+                            st.success(f"Data {selected_ac} berhasil diperbarui!")
+                            st.rerun()
+
+                    with btn_delete:
+                        if st.button("🗑️ Delete Aircraft", type="primary", use_container_width=True):
+                            # Memanggil fungsi dari database.py
+                            from database import delete_aircraft
+                            delete_aircraft(selected_ac)
+                            st.warning(f"Data {selected_ac} telah dihapus.")
+                            st.rerun()
             else:
                 st.info("No aircraft registered yet.")
 
         # === HALAMAN 2: STRUCTURE MANAGEMENT ===
-        if page_name == "Structure Management":
+        elif page_name == "Structure Management":
             st.header("🏗️ Aircraft Structure Management")
             
             # 1. Pilih Tipe Pesawat
@@ -148,7 +197,45 @@ def show(page_name):
                                 conn.commit()
                                 st.rerun()
 
+# === HALAMAN 3: MAINTENANCE CATALOG (Perbaikan di Sini) ===
+        elif page_name == "Maintenance Catalog":
+            st.header("🛠️ Maintenance Catalog")
+            st.info("Master data untuk Task Maintenance individual.")
+
+            with st.form("form_maintenance_catalog", clear_on_submit=True):
+                col1, col2 = st.columns(2)
+                with col1:
+                    aircraft_type = st.selectbox("Aircraft Type", ["Bell-412", "DHC6-300", "DHC6-400", "B737-8 MAX", "MIL171", "AS350B3"])
+                    task_id = st.text_input("Task ID (e.g., EMMA-01)")
+                    task_title = st.text_input("Task Title")
+                with col2:
+                    interval_hours = st.number_input("Interval Hours", min_value=0.0)
+                    interval_cycles = st.number_input("Interval Cycles", min_value=0)
+                    interval_calendar = st.number_input("Interval Calendar (Days)", min_value=0)
+                
+                task_description = st.text_area("Task Description")
+                submit_button = st.form_submit_button("Save to Catalog")
+
+                if submit_button:
+                    if task_id and task_title:
+                        cursor = conn.cursor()
+                        cursor.execute("""
+                            INSERT INTO maintenance_catalog 
+                            (aircraft_type, task_id, task_title, task_description, interval_hours, interval_cycles, interval_calendar)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (aircraft_type, task_id, task_title, task_description, interval_hours, interval_cycles, interval_calendar))
+                        conn.commit()
+                        st.success(f"Task {task_id} disimpan!")
+                        st.rerun()
+                    else:
+                        st.warning("Isi Task ID dan Title!")
+
+            # Tampilkan Tabel
+            st.divider()
+            df_cat = pd.read_sql_query("SELECT * FROM maintenance_catalog", conn)
+            st.dataframe(df_cat, use_container_width=True)
+
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error pada halaman {page_name}: {e}")
     finally:
         conn.close()
