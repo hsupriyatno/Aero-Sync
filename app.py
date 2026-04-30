@@ -4,6 +4,7 @@ import views.dashboard as dashboard
 import views.catalog as catalog
 import views.maintenance_entry as maintenance_entry
 import views.maintenance_status as maintenance_status
+import views.material_planning as material_planning
 import views.engineering as engineering
 import views.inventory as inventory
 import views.rcpm as rcpm
@@ -11,6 +12,7 @@ import views.procurement as procurement
 import datetime
 import part_interchange_mgmt  # Import file baru
 from views import catalog, initial_install
+from views import catalog, structure  # Import file baru
 
 # 1. Konfigurasi Halaman
 st.set_page_config(
@@ -63,8 +65,8 @@ if 'page' not in st.session_state:
 def update_page(key):
     if st.session_state[key] != "":
         st.session_state.page = st.session_state[key]
-        # Reset dropdown lain agar tidak sinkron ke pilihan lama
-        keys_to_reset = ["cat", "maint", "status", "eng", "inv_select", "rcp", "proc", "nav_menu"]
+        # Tambahkan 'interchange' dan 'mat_plan' ke dalam list reset
+        keys_to_reset = ["cat", "maint", "status", "eng", "inv_select", "rcp", "proc", "nav_menu", "interchange", "mat_plan"]
         for k in keys_to_reset:
             if k != key and k in st.session_state:
                 st.session_state[k] = ""
@@ -76,17 +78,18 @@ def get_index(options, current_page):
         return 0
 
 # 5. DEFINISI MENU (Sangat Penting: Harus di atas sebelum dipanggil selectbox)
-cat_opts = ["", "Aircraft Catalog", "Structure Management", "Initial Component Installed", "Maintenance Catalog"]
+cat_opts = ["", "Aircraft Catalog", "Aircraft Configuration", "Initial Component Installed", "Maintenance Catalog", "Airworthiness Directives Catalog", "Service Bulletins Catalog"]
 maint_opts = ["", "AML Entry", "Maintenance Package / Work Pack", "Update Maintenance Tasks"]
-status_opts = ["", "Aircraft Utilization Record", "Airworthiness Directive Status", "Service Bulletin Status"]
+status_opts = ["", "Aircraft Utilization Record", "Component Status", "Airworthiness Directive Status", "Service Bulletin Status"]
 eng_opts = ["", "Engineering Order", "Engineering Evaluation", "Deferred Defect"]
 inv_opts = ["", "Parts Catalog", "Parts In Stock", "Parts Usage History", "Incoming/Outgoing", "Allotment"]
 rcp_opts = ["", "RCPM Dashboard", "Defect Analysis", "Component Analysis", "ECTM", "Oil Consumption Analysis", "ETOPS Requirement"]
 proc_opts = ["", "Requisition", "Purchase Order", "Repair Order", "Vendor Management"]
 part_interchange_opts = ["", "Part Interchangeability Management"]  # Opsi untuk part interchange
+mat_plan_opts = ["", "Scheduled Removal", "Unscheduled Removal Forcasting", "Material Requisition", "Stock Control", "Ideal Floating Calculation"]  # Opsi untuk material planning
 
 # Membuat list gabungan untuk fitur "Quick Jump" agar tidak NameError
-opsi_menu = ["Dashboard"] + cat_opts + maint_opts + status_opts + eng_opts + inv_opts + rcp_opts + proc_opts + part_interchange_opts
+opsi_menu = ["Dashboard"] + cat_opts + maint_opts + status_opts + eng_opts + inv_opts + rcp_opts + proc_opts + part_interchange_opts + mat_plan_opts
 opsi_menu = [opt for opt in opsi_menu if opt != ""] # Buang string kosong
 
 # 6. SIDEBAR CUSTOM
@@ -107,6 +110,8 @@ st.sidebar.selectbox("INVENTORY", inv_opts, index=get_index(inv_opts, st.session
 st.sidebar.selectbox("RCPM", rcp_opts, index=get_index(rcp_opts, st.session_state.page), key="rcp", on_change=update_page, args=("rcp",))
 st.sidebar.selectbox("PROCUREMENT", proc_opts, index=get_index(proc_opts, st.session_state.page), key="proc", on_change=update_page, args=("proc",))
 st.sidebar.selectbox("PART INTERCHANGE MGMT", ["", "Part Interchangeability Management"], index=get_index(["", "Part Interchangeability Management"], st.session_state.page), key="interchange", on_change=update_page, args=("interchange",))
+st.sidebar.selectbox("MATERIAL PLANNING", mat_plan_opts, index=get_index(mat_plan_opts, st.session_state.page), key="mat_plan", on_change=update_page, args=("mat_plan",))
+
 st.sidebar.divider()
 # Navigasi Cepat (Sudah tidak akan error opsi_menu lagi)
 st.sidebar.selectbox("QUICK JUMP", options=opsi_menu, index=get_index(opsi_menu, st.session_state.page), key="nav_menu", on_change=update_page, args=("nav_menu",))
@@ -118,6 +123,8 @@ if page == "Dashboard":
     dashboard.show()
 elif page == "Initial Component Installed":
     initial_install.show()
+elif page == "Aircraft Configuration":
+    structure.show(page)
 elif page in cat_opts:
     catalog.show(page)
 elif page in maint_opts:
@@ -132,7 +139,9 @@ elif page in rcp_opts:
     rcpm.show(page)
 elif page in proc_opts:
     procurement.show(page)
+elif page in mat_plan_opts:
+    material_planning.show(page)
 elif page == "Part Interchangeability Management":
-    part_interchange_mgmt.show()
+    part_interchange_mgmt.show(page)
 else:
     st.info(f"Halaman '{page}' sedang dalam pengembangan.")
