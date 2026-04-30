@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
-from database import get_current_stock
 from database import get_current_stock, save_material_request # Tambahkan ini
-import get_current_stock
 
 def show(current_page):
     st.title(f"📦 {current_page}")
