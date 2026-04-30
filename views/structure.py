@@ -3,7 +3,7 @@ import pandas as pd
 from database import create_connection
 
 def show(page_name):
-    if page_name == "Structure Management": # Sesuaikan dengan nama di app.py Bapak
+    if page_name == "Aircraft Configuration": # Sesuaikan dengan nama di app.py Bapak
         st.header("🏗️ Aircraft Configuration Management")
         st.write("Definisikan komponen wajib (Master Blueprint) untuk setiap tipe pesawat.")
 
@@ -16,8 +16,8 @@ def show(page_name):
         type_list = df_types['ac_type'].tolist() if not df_types.empty else ["DHC6-300", "Bell 412", "B737-8"]
 
         # Ambil data dari Master Part Number untuk Dropdown Component
-        df_master = pd.read_sql_query("SELECT DISTINCT component_name, ata_chapter FROM master_part_number", conn)
-        master_dict = dict(zip(df_master['component_name'], df_master['ata_chapter']))
+        df_master = pd.read_sql_query("SELECT DISTINCT description, ata_chapter FROM master_part_number", conn)
+        master_dict = dict(zip(df_master['description'], df_master['ata_chapter']))
         component_options = sorted(list(master_dict.keys()))
 
         # --- 2. FORM INPUT STRUCTURE ---

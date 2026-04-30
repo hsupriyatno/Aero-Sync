@@ -98,7 +98,7 @@ def show(page_name):
 
         # === HALAMAN 2: STRUCTURE MANAGEMENT ===
         elif page_name == "Structure Management":
-            st.header("🏗️ Aircraft Structure Management")
+            st.header("🏗️ Aircraft Configuration Management")
             
             # 1. Pilih Tipe Pesawat
             df_ac = pd.read_sql_query("SELECT DISTINCT ac_type FROM catalog", conn)
@@ -212,7 +212,8 @@ def show(page_name):
                     interval_hours = st.number_input("Interval Hours", min_value=0.0)
                     interval_cycles = st.number_input("Interval Cycles", min_value=0)
                     interval_calendar = st.number_input("Interval Calendar (Days)", min_value=0)
-                
+                    task_duration = st.number_input("Task Duration (Days)", min_value=1, help="Estimasi berapa hari pekerjaan ini selesai")
+
                 task_description = st.text_area("Task Description")
                 submit_button = st.form_submit_button("Save to Catalog")
 
@@ -221,9 +222,9 @@ def show(page_name):
                         cursor = conn.cursor()
                         cursor.execute("""
                             INSERT INTO maintenance_catalog 
-                            (aircraft_type, task_id, task_title, task_description, interval_hours, interval_cycles, interval_calendar)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """, (aircraft_type, task_id, task_title, task_description, interval_hours, interval_cycles, interval_calendar))
+                            (aircraft_type, task_id, task_title, task_description, interval_hours, interval_cycles, interval_calendar, duration_days)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (aircraft_type, task_id, task_title, task_description, interval_hours, interval_cycles, interval_calendar, task_duration))
                         conn.commit()
                         st.success(f"Task {task_id} disimpan!")
                         st.rerun()
@@ -235,7 +236,19 @@ def show(page_name):
             df_cat = pd.read_sql_query("SELECT * FROM maintenance_catalog", conn)
             st.dataframe(df_cat, use_container_width=True)
 
+# === HALAMAN 4: AIRWORTHINESS DIRECTIVES CATALOG ===
+
+        elif page_name == "Airworthiness Directives Catalog":
+            st.header("🛠️ Airworthiness Directives Catalog")
+            st.info("Master data untuk Airworthiness Directives individual.")
+
+# === HALAMAN 4: SERVICE BULLETINS CATALOG ===
+        elif page_name == "Service Bulletins Catalog":
+            st.header("🛠️ Service Bulletins Catalog")
+            st.info("Master data untuk Service Bulletins individual.")
+
     except Exception as e:
         st.error(f"Error pada halaman {page_name}: {e}")
     finally:
         conn.close()
+

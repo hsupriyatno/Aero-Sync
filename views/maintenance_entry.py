@@ -1,8 +1,13 @@
 import streamlit as st
-from database import create_connection
 import pandas as pd
-import streamlit as st
-from datetime import date, timedelta, datetime # Tambahkan datetime untuk jaga-jaga
+from datetime import date, timedelta, datetime
+from database import (
+    create_connection,
+    get_tasks_by_ac_type,
+    save_maintenance_package,    # Pastikan nama ini sama dengan di database.py
+    get_all_maintenance_packages,
+    delete_maintenance_package
+)
 
 def get_current_totals(ac_reg):
     conn = create_connection()
@@ -40,194 +45,238 @@ def get_current_totals(ac_reg):
 def show(page_name):
     # --- LOGIKA PEMISAH HALAMAN ---
     if page_name == "Update Maintenance Tasks":
-        show_update_maintenance_tasks() # Panggil fungsi planning
-        return # STOP di sini, jangan lanjut ke kode AML di bawah
-    
-    # --- KODE DI BAWAH INI HANYA JALAN JIKA BUKAN PLANNING ---
-    st.subheader("📝 Aircraft Maintenance Log (AML) Entry")
-    st.subheader("1. Aircraft Utilization (Parent)")
-    conn = create_connection()
+        show_update_maintenance_tasks()
+        return
 
-    ac_list = pd.read_sql("SELECT ac_reg FROM catalog", conn)['ac_reg'].tolist()
-    conn.close()
-    
-    col1, col2, col3, col4 = st.columns(4)
-    aml_no = col1.text_input("AML No", key="main_aml_no") # Variabel aml_no didefinisikan di sini
-    selected_ac = col2.selectbox("A/C Reg", ac_list)
-    ac_type = col3.text_input("A/C Type") 
-    date_entry = col4.date_input("Date")
+    elif page_name == "Maintenance Package / Work Pack":
+        show_maintenance_package()
+        return
 
-    col_e, col_f, col_g, col_h = st.columns(4)
-    with col_e: departure = st.text_input("Departure")
-    with col_f: arrival = st.text_input("Arrival")
-    with col_g: input_fh = st.number_input("Flight Hours", min_value=0.0, step=0.1, format="%.2f")
-    with col_h: input_ld = st.number_input("Landings", min_value=0, step=1)
-
-    base_fh, base_ld, base_e1h, base_e1c, base_e2h, base_e2c = get_current_totals(selected_ac)
-
-    current_total_af_h = base_fh + input_fh
-    current_total_af_l = base_ld + input_ld
-    current_total_e1_h = base_e1h + input_fh
-    current_total_e1_c = base_e1c + input_ld
-    current_total_e2_h = base_e2h + input_fh
-    current_total_e2_c = base_e2c + input_ld
-
-    st.write("---")
-    st.info("💡 Auto-Calculated Totals")
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.text_input("Total AF Hours", value=f"{current_total_af_h:.2f}", disabled=True)
-    c2.text_input("Total AF Landings", value=str(int(current_total_af_l)), disabled=True)
-    c3.text_input("Total E1 Hours", value=f"{current_total_e1_h:.2f}", disabled=True)
-    c4.text_input("Total E1 Cycles", value=str(int(current_total_e1_c)), disabled=True)
-    c5.text_input("Total E2 Hours", value=f"{current_total_e2_h:.2f}", disabled=True)
-    c6.text_input("Total E2 Cycles", value=str(int(current_total_e2_c)), disabled=True)
-
-    st.divider()
-    st.subheader("2. Detailed Reports (Child)")
-    tab1, tab2, tab3 = st.tabs(["🔥 Engine Parameter", "👨‍✈️ Pilot Report", "⚙️ Component Replacement"])
-
-    with tab1:
-        colm1, colm2, colm3 = st.columns(3)
-        press_alt = colm1.text_input("Pressure Altitude") 
-        oat = colm2.text_input("OAT")
-        ias = colm3.text_input("IAS")
-        col_e1, col_e2 = st.columns(2)
-        with col_e1:
-            st.markdown("**Engine 1**")
-            tq1, np1, t51, ng1, ff1, ot1, op1, oa1 = [st.number_input(f"{n} 1", key=f"{n}1") for n in ["TQ","NP","T5","NG","FF","OT","OP","OA"]]
-        with col_e2:
-            st.markdown("**Engine 2**")
-            tq2, np2, t52, ng2, ff2, ot2, op2, oa2 = [st.number_input(f"{n} 2", key=f"{n}2") for n in ["TQ","NP","T5","NG","FF","OT","OP","OA"]]
-
-    with tab2:
-        st.caption("Input maksimal 3 temuan pilot")
-        pilot_reports = []
+    elif page_name == "AML Entry":
+        st.subheader("📝 Aircraft Maintenance Log (AML) Entry")
+        st.subheader("1. Aircraft Utilization (Parent)")
         
-        for i in range(1, 4):
-            # LOGIKA AUTO-NUMBERING
-            # Jika aml_no diisi, format jadi [AML]-1. Jika kosong, tetap PENDING-1
-            display_id = f"{aml_no}-{i}" if aml_no else f"PENDING-{i}"
+        conn = create_connection()
+        try:
+            ac_list = pd.read_sql("SELECT ac_reg FROM catalog", conn)['ac_reg'].tolist()
+        finally:
+            conn.close()
+
+        # Input Data Utama
+        col1, col2, col3, col4 = st.columns(4)
+        aml_no = col1.text_input("AML No", key="main_aml_no")
+        selected_ac = col2.selectbox("A/C Reg", ac_list)
+        ac_type = col3.text_input("A/C Type") 
+        date_entry = col4.date_input("Date")
+
+        col_e, col_f, col_g, col_h = st.columns(4)
+        departure = col_e.text_input("Departure")
+        arrival = col_f.text_input("Arrival")
+        input_fh = col_g.number_input("Flight Hours", min_value=0.0, step=0.1, format="%.2f")
+        input_ld = col_h.number_input("Landings", min_value=0, step=1)
+
+        # Kalkulasi Totals
+        base_fh, base_ld, base_e1h, base_e1c, base_e2h, base_e2c = get_current_totals(selected_ac)
+        current_total_af_h = base_fh + input_fh
+        current_total_af_l = base_ld + input_ld
+        current_total_e1_h = base_e1h + input_fh
+        current_total_e1_c = base_e1c + input_ld
+        current_total_e2_h = base_e2h + input_fh
+        current_total_e2_c = base_e2c + input_ld
+
+        # Tampilan Totals (Info)
+        st.info("💡 Auto-Calculated Totals")
+        c1, c2, c3, c4, c5, c6 = st.columns(6)
+        c1.text_input("Total AF Hours", value=f"{current_total_af_h:.2f}", disabled=True)
+        c2.text_input("Total AF Landings", value=str(int(current_total_af_l)), disabled=True)
+        c3.text_input("Total E1 Hours", value=f"{current_total_e1_h:.2f}", disabled=True)
+        c4.text_input("Total E1 Cycles", value=str(int(current_total_e1_c)), disabled=True)
+        c5.text_input("Total E2 Hours", value=f"{current_total_e2_h:.2f}", disabled=True)
+        c6.text_input("Total E2 Cycles", value=str(int(current_total_e2_c)), disabled=True)
+
+        st.divider()
+        st.subheader("2. Detailed Reports (Child)")
+        tab1, tab2, tab3 = st.tabs(["🔥 Engine Parameter", "👨‍✈️ Pilot Report", "⚙️ Component Replacement"])
+
+        with tab1:
+            colm1, colm2, colm3 = st.columns(3)
+            press_alt = colm1.text_input("Pressure Altitude") 
+            oat = colm2.text_input("OAT")
+            ias = colm3.text_input("IAS")
+            col_e1, col_e2 = st.columns(2)
+            with col_e1:
+                st.markdown("**Engine 1**")
+                tq1, np1, t51, ng1, ff1, ot1, op1, oa1 = [st.number_input(f"{n} 1", key=f"{n}1") for n in ["TQ","NP","T5","NG","FF","OT","OP","OA"]]
+            with col_e2:
+                st.markdown("**Engine 2**")
+                tq2, np2, t52, ng2, ff2, ot2, op2, oa2 = [st.number_input(f"{n} 2", key=f"{n}2") for n in ["TQ","NP","T5","NG","FF","OT","OP","OA"]]
+                pass
+
+        with tab2:
+            st.caption("Input maksimal 3 temuan pilot")
+            pilot_reports = []
+        
+            for i in range(1, 4):
+                # LOGIKA AUTO-NUMBERING
+                # Jika aml_no diisi, format jadi [AML]-1. Jika kosong, tetap PENDING-1
+                display_id = f"{aml_no}-{i}" if aml_no else f"PENDING-{i}"
             
-            with st.expander(f"Pilot Report #{i} ({display_id})"):
-                col_a, col_b = st.columns([1, 3])
+                with st.expander(f"Pilot Report #{i} ({display_id})"):
+                    col_a, col_b = st.columns([1, 3])
                 
-                # Gunakan value=display_id agar otomatis berubah saat aml_no diketik
-                def_id = col_a.text_input(f"Defect ID {i}", value=display_id, disabled=True, key=f"def_id_val_{i}")
-                def_desc = col_b.text_input(f"Description {i}", key=f"def_desc_{i}")
+                    # Gunakan value=display_id agar otomatis berubah saat aml_no diketik
+                    def_id = col_a.text_input(f"Defect ID {i}", value=display_id, disabled=True, key=f"def_id_val_{i}")
+                    def_desc = col_b.text_input(f"Description {i}", key=f"def_desc_{i}")
                 
-                rect = st.text_area(f"Rectification {i}", key=f"rect_{i}", height=70)
-                lame = st.text_input(f"LAME {i}", key=f"lame_{i}")
+                    rect = st.text_area(f"Rectification {i}", key=f"rect_{i}", height=70)
+                    lame = st.text_input(f"LAME {i}", key=f"lame_{i}")
                 
-                # --- LOGIKA DEFERRED DEFECT (Input Manual) ---
-                is_deferred = False
-                dd_manual_no = None
-                def_cat, due_date = None, None
+                    # --- LOGIKA DEFERRED DEFECT (Input Manual) ---
+                    is_deferred = False
+                    dd_manual_no = None
+                    def_cat, due_date = None, None
                 
-                if def_desc:
-                    with st.popover(f"📂 Defer this Defect (#{i})"):
-                        st.markdown("### Manual Deferred Entry")
-                        # Sesuai permintaan: User isi manual nomor dari buku hard copy
-                        dd_manual_no = st.text_input(f"DD Log No (Manual) {i}", key=f"dd_manual_{i}")
+                    if def_desc:
+                        with st.popover(f"📂 Defer this Defect (#{i})"):
+                            st.markdown("### Manual Deferred Entry")
+                            # Sesuai permintaan: User isi manual nomor dari buku hard copy
+                            dd_manual_no = st.text_input(f"DD Log No (Manual) {i}", key=f"dd_manual_{i}")
                         
-                        c1, c2 = st.columns(2)
-                        def_cat = c1.selectbox(f"Category {i}", ["A", "B", "C", "D"], key=f"cat_{i}")
-                        due_date = c2.date_input(f"Due Date {i}", key=f"due_{i}")
+                            c1, c2 = st.columns(2)
+                            def_cat = c1.selectbox(f"Category {i}", ["A", "B", "C", "D"], key=f"cat_{i}")
+                            due_date = c2.date_input(f"Due Date {i}", key=f"due_{i}")
                         
-                        if dd_manual_no:
-                            is_deferred = True
+                            if dd_manual_no:
+                                is_deferred = True
 
-                pilot_reports.append({
-                    "id": display_id, # ID Otomatis (DHC6-OCG-001-1)
-                    "desc": def_desc, 
-                    "rect": rect, 
-                    "lame": lame,
-                    "deferred": is_deferred,
-                    "dd_no": dd_manual_no, # ID Manual dari Buku
-                    "cat": def_cat,
-                    "due": due_date
-                })
+                    pilot_reports.append({
+                        "id": display_id, # ID Otomatis (DHC6-OCG-001-1)
+                        "desc": def_desc, 
+                        "rect": rect, 
+                        "lame": lame,
+                        "deferred": is_deferred,
+                        "dd_no": dd_manual_no, # ID Manual dari Buku
+                        "cat": def_cat,
+                        "due": due_date
+                    })
 
-    with tab3:
-        st.caption("Input maksimal 7 penggantian komponen")
-        comp_replacements = []
-        for j in range(1, 8):
-            with st.expander(f"Component Replacement #{j}"):
-                c1, c2, c3 = st.columns(3)
-                pos = c1.selectbox(f"Pos {j}", ["", "E1", "E2", "AF", "AV"], key=f"pos_{j}")
-                p_desc = c2.text_input(f"Part Desc {j}", key=f"p_desc_{j}")
-                grn = c3.text_input(f"GRN No {j}", key=f"grn_{j}")
-                col_rem, col_ins = st.columns(2)
-                rem_pn, rem_sn = col_rem.text_input(f"Off P/N {j}", key=f"rem_pn_{j}"), col_rem.text_input(f"Off S/N {j}", key=f"rem_sn_{j}")
-                ins_pn, ins_sn = col_ins.text_input(f"On P/N {j}", key=f"ins_pn_{j}"), col_ins.text_input(f"On S/N {j}", key=f"ins_sn_{j}")
-                comp_replacements.append({"pos": pos, "p_desc": p_desc, "rem_pn": rem_pn, "rem_sn": rem_sn, "ins_pn": ins_pn, "ins_sn": ins_sn, "grn": grn})
+        with tab3:
+            st.caption("Input maksimal 7 penggantian komponen")
+            comp_replacements = []
+            for j in range(1, 8):
+                with st.expander(f"Component Replacement #{j}"):
+                    c1, c2, c3 = st.columns(3)
+                    pos = c1.selectbox(f"Pos {j}", ["", "E1", "E2", "AF", "AV"], key=f"pos_{j}")
+                    p_desc = c2.text_input(f"Part Desc {j}", key=f"p_desc_{j}")
+                    grn = c3.text_input(f"GRN No {j}", key=f"grn_{j}")
+                    col_rem, col_ins = st.columns(2)
+                    rem_pn, rem_sn = col_rem.text_input(f"Off P/N {j}", key=f"rem_pn_{j}"), col_rem.text_input(f"Off S/N {j}", key=f"rem_sn_{j}")
+                    ins_pn, ins_sn = col_ins.text_input(f"On P/N {j}", key=f"ins_pn_{j}"), col_ins.text_input(f"On S/N {j}", key=f"ins_sn_{j}")
+                    comp_replacements.append({"pos": pos, "p_desc": p_desc, "rem_pn": rem_pn, "rem_sn": rem_sn, "ins_pn": ins_pn, "ins_sn": ins_sn, "grn": grn})
 
-    if st.button("💾 Submit AML Entry", use_container_width=True, type="primary"):
-        if aml_no:
-            try:
-                conn = create_connection()
-                curr = conn.cursor()
+        if st.button("💾 Submit AML Entry", use_container_width=True, type="primary"):
+            if aml_no:
+                try:
+                    conn = create_connection()
+                    curr = conn.cursor()
 
-                curr.execute("INSERT INTO aml_utilization (aml_no, ac_type, ac_reg, date, departure, arrival, flight_hours, landings) VALUES (?,?,?,?,?,?,?,?)", 
-                             (aml_no, ac_type, selected_ac, str(date_entry), departure, arrival, input_fh, input_ld))
-                
-                curr.execute("INSERT INTO aml_engine_param (aml_no, press_alt, oat, ias, tq1, np1, t51, ng1, ff1, ot1, op1, oa1, tq2, np2, t52, ng2, ff2, ot2, op2, oa2) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
-                             (aml_no, press_alt, oat, ias, tq1, np1, t51, ng1, ff1, ot1, op1, oa1, tq2, np2, t52, ng2, ff2, ot2, op2, oa2))
+                    # --- PERBAIKAN DI SINI ---
+                    # Tambahkan kolom ac_tsn dan ac_csn ke dalam Query
+                    query_aml = """
+                        INSERT INTO aml_utilization 
+                        (aml_no, ac_type, ac_reg, date, departure, arrival, flight_hours, landings, ac_tsn, ac_csn) 
+                        VALUES (?,?,?,?,?,?,?,?,?,?)
+                    """
+                    
+                    # Masukkan variabel current_total_af_h dan current_total_af_l ke dalam tuple data
+                    curr.execute(query_aml, (
+                        aml_no, 
+                        ac_type, 
+                        selected_ac, 
+                        str(date_entry), 
+                        departure, 
+                        arrival, 
+                        float(input_fh), 
+                        int(input_ld),
+                        float(current_total_af_h), # Pastikan ini angka
+                        int(current_total_af_l)     # Pastikan ini angka (CSN)
+                    ))
+                    # -------------------------
 
-                for report in pilot_reports:
-                    # Pastikan hanya simpan jika ada deskripsi defect
-                    if report['desc']: 
-                        # Pastikan nama kolom di SQL sesuai dengan database (defect_id)
-                        curr.execute("""
-                            INSERT INTO aml_pilot_report (aml_no, defect_id, defect_desc, rectification, lame, status)
-                            VALUES (?, ?, ?, ?, ?, 'OPEN')
-                        """, (aml_no, report['id'], report['desc'], report['rect'], report['lame']))
+                    # Simpan Engine Parameter (lanjutkan kode Bapak yang lama)
+                    curr.execute("INSERT INTO aml_engine_param (aml_no, press_alt, oat, ias, tq1, np1, t51, ng1, ff1, ot1, op1, oa1, tq2, np2, t52, ng2, ff2, ot2, op2, oa2) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
+                                (aml_no, press_alt, oat, ias, tq1, np1, t51, ng1, ff1, ot1, op1, oa1, tq2, np2, t52, ng2, ff2, ot2, op2, oa2))
 
-                        # 3. JIKA DEFERRED, SIMPAN KE TABEL DEFERRED_DEFECTS
-                        if report['deferred']:
+                    for report in pilot_reports:
+                        # Pastikan hanya simpan jika ada deskripsi defect
+                        if report['desc']: 
+                            # Pastikan nama kolom di SQL sesuai dengan database (defect_id)
                             curr.execute("""
-                                INSERT INTO deferred_defects (aml_no, ac_reg, defect_no, description, rectification, category, due_date)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
-                            """, (aml_no, selected_ac, report['dd_no'], report['desc'], report['rect'], report['cat'], str(report['due'])))
+                                INSERT INTO aml_pilot_report (aml_no, defect_id, defect_desc, rectification, lame, status)
+                                VALUES (?, ?, ?, ?, ?, 'OPEN')
+                            """, (aml_no, report['id'], report['desc'], report['rect'], report['lame']))
 
-                        for comp in comp_replacements:
-                            if comp['pos']:
-                                curr.execute("INSERT INTO aml_component_replacement (aml_no, pos, part_desc, rem_pn, rem_sn, ins_pn, ins_sn, grn) VALUES (?,?,?,?,?,?,?,?)", 
-                                            (aml_no, comp['pos'], comp['p_desc'], comp['rem_pn'], comp['rem_sn'], comp['ins_pn'], comp['ins_sn'], comp['grn']))
+                            # 3. JIKA DEFERRED, SIMPAN KE TABEL DEFERRED_DEFECTS
+                            if report['deferred']:
+                                curr.execute("""
+                                    INSERT INTO deferred_defects (aml_no, ac_reg, defect_no, description, rectification, category, due_date)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                """, (aml_no, selected_ac, report['dd_no'], report['desc'], report['rect'], report['cat'], str(report['due'])))
+
+                            for comp in comp_replacements:
+                                if comp['pos']:
+                                    curr.execute("INSERT INTO aml_component_replacement (aml_no, pos, part_desc, rem_pn, rem_sn, ins_pn, ins_sn, grn) VALUES (?,?,?,?,?,?,?,?)", 
+                                                (aml_no, comp['pos'], comp['p_desc'], comp['rem_pn'], comp['rem_sn'], comp['ins_pn'], comp['ins_sn'], comp['grn']))
                 
-                conn.commit()
-                st.success("✅ Success! Data & Deferred Defects Saved.")
-                st.rerun()
-            except Exception as e:
-                conn.rollback()
-                st.error(f"❌ Error: {e}")
-            finally:
-                conn.close()
+                    conn.commit()
+                    st.success("✅ Success! Data & Deferred Defects Saved.")
+                    st.rerun()
+                except Exception as e:
+                    conn.rollback()
+                    st.error(f"❌ Error: {e}")
+                finally:
+                    conn.close()
 
-    # --- LIST RECORDS ---
-    st.divider()
-    st.subheader("📋 Registered AML Records")
-    conn = create_connection()
-    try:
-        df_aml = pd.read_sql("SELECT aml_no, ac_reg, date, flight_hours, landings FROM aml_utilization ORDER BY date DESC", conn)
-        if not df_aml.empty:
-            for _, row in df_aml.iterrows():
-                with st.expander(f"AML: {row['aml_no']} | {row['ac_reg']} | {row['date']}"):
-                    c_inf, c_del = st.columns([4, 1])
-                    c_inf.write(f"Hours: {row['flight_hours']} | Ldgs: {row['landings']}")
-                    if c_del.button("🗑️ Delete", key=f"del_{row['aml_no']}"):
-                        curr = conn.cursor()
-                        curr.execute("DELETE FROM aml_utilization WHERE aml_no = ?", (row['aml_no'],))
-                        conn.commit()
-                        st.rerun()
-    finally:
-        conn.close()
+# --- LIST RECORDS (Cari bagian ini di bawah st.divider()) ---
+        st.divider()
+        st.subheader("📋 Registered AML Records")
+        conn = create_connection()
+        try:
+            df_aml = pd.read_sql("SELECT aml_no, ac_reg, date, flight_hours, landings FROM aml_utilization ORDER BY date DESC", conn)
+            if not df_aml.empty:
+                for _, row in df_aml.iterrows():
+                    with st.expander(f"AML: {row['aml_no']} | {row['ac_reg']} | {row['date']}"):
+                        c_inf, c_del = st.columns([4, 1])
+                        c_inf.write(f"Hours: {row['flight_hours']} | Ldgs: {row['landings']}")
+                        
+                        if c_del.button("🗑️ Delete", key=f"del_{row['aml_no']}"):
+                            curr = conn.cursor()
+                            try:
+                                # 1. Hapus SEMUA data terkait di tabel-tabel "Child"
+                                curr.execute("DELETE FROM aml_engine_param WHERE aml_no = ?", (row['aml_no'],))
+                                curr.execute("DELETE FROM aml_pilot_report WHERE aml_no = ?", (row['aml_no'],))
+                                curr.execute("DELETE FROM aml_component_replacement WHERE aml_no = ?", (row['aml_no'],))
+                                curr.execute("DELETE FROM deferred_defects WHERE aml_no = ?", (row['aml_no'],))
+                                
+                                # 2. Baru hapus di tabel utama (Parent)
+                                curr.execute("DELETE FROM aml_utilization WHERE aml_no = ?", (row['aml_no'],))
+                                
+                                conn.commit()
+                                st.success(f"Record {row['aml_no']} Bersih Total!")
+                                st.rerun()
+                            except Exception as e:
+                                conn.rollback()
+                                st.error(f"Gagal hapus total: {e}")
+        finally:
+            conn.close()
 
 def show_update_maintenance_tasks():
     st.header("🛠️ Update Maintenance Tasks")
     conn = create_connection()
 
     try:
-        df_catalog = pd.read_sql("SELECT task_id, task_title, task_description FROM maintenance_catalog", conn)
+        # 1. Ambil data katalog (Pastikan kolom task_description ada)
+        df_catalog = pd.read_sql("SELECT task_id, task_title, task_description, duration_days FROM maintenance_catalog", conn)
         df_ac = pd.read_sql("SELECT ac_reg FROM catalog", conn)
         
         if df_catalog.empty:
@@ -240,11 +289,18 @@ def show_update_maintenance_tasks():
                 registration = st.selectbox("Select Aircraft", df_ac['ac_reg'])
                 selected_task_id = st.selectbox("Task ID", df_catalog['task_id'].unique())
                 
+                # --- LOGIKA OTOMATIS: Ambil Title & Desc dari Catalog berdasarkan Task ID ---
                 mask = df_catalog['task_id'] == selected_task_id
                 task_info = df_catalog[mask].iloc[0] if any(mask) else None
-                task_desc = task_info['task_description'] if task_info is not None else ""
                 
-                st.text_input("Task Title", value=task_info['task_title'] if task_info is not None else "", disabled=True)
+                # Kita definisikan variabel penampung agar bisa dipakai di bagian simpan
+                current_title = task_info['task_title'] if task_info is not None else ""
+                current_desc = task_info['task_description'] if task_info is not None else ""
+                current_duration = task_info['duration_days'] if task_info is not None else 0
+                
+                # Tampilkan ke layar (Data ini otomatis berubah saat Task ID diganti)
+                st.text_input("Task Title", value=current_title, disabled=True)
+                st.text_area("Task Description", value=current_desc, disabled=True, height=100)
 
             with col2:
                 ld_h = st.number_input("Last Done Hours", min_value=0.0)
@@ -258,27 +314,28 @@ def show_update_maintenance_tasks():
                 st.write(f"**Calculated Due:** {due_h:.2f} Hours | {due_d.strftime('%Y-%m-%d')}")
                 
                 if st.form_submit_button("💾 Save to Schedule"):
-                    # --- LOGIKA PENYIMPANAN KE DATABASE ---
                     try:
                         curr = conn.cursor()
-                        # Gunakan INSERT OR REPLACE agar jika Task ID & AC Reg sama, dia mengupdate yang lama
+                        # Gunakan variabel 'current_desc' yang sudah kita ambil di atas
+                        # Ubah query_save Bapak menjadi:
                         query_save = """
                             INSERT OR REPLACE INTO maintenance_schedule 
-                            (ac_reg, task_id, task_description, last_done_hours, last_done_date, next_due_hours, next_due_date)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                            (ac_reg, task_id, task_description, last_done_hours, last_done_date, next_due_hours, next_due_date, duration_days)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """
                         curr.execute(query_save, (
                             registration, 
                             selected_task_id, 
-                            task_desc, 
+                            current_desc, 
                             ld_h, 
                             str(ld_d), 
                             due_h, 
-                            str(due_d)
+                            str(due_d),
+                            current_duration  # Masukkan variabel durasi di sini
                         ))
                         conn.commit()
                         st.success("✅ Jadwal Berhasil Diperbarui!")
-                        st.rerun() # Supaya tabel di bawah langsung update
+                        st.rerun() 
                     except Exception as e:
                         st.error(f"Gagal menyimpan ke database: {e}")
 
@@ -324,3 +381,92 @@ def show_update_maintenance_tasks():
         st.error(f"Gagal memuat tabel: {e}")
     finally:
         conn.close()
+
+def show_maintenance_package():
+    st.title("🛠️ Maintenance Package / Work Pack")
+    
+    # --- 1. INISIALISASI SESSION STATE (Penting!) ---
+    if "edit_mode" not in st.session_state:
+        st.session_state.edit_mode = False
+        st.session_state.pkg_to_edit = {}
+
+    # --- 2. LOGIKA PENGISIAN FORM ---
+    # Jika sedang mode edit, gunakan data lama. Jika tidak, kosongkan.
+    default_name = st.session_state.pkg_to_edit.get("name", "")
+    default_tasks = st.session_state.pkg_to_edit.get("tasks", [])
+    default_ac = st.session_state.pkg_to_edit.get("ac_type", "DHC6-300")
+
+    # Aircraft Type di luar form agar trigger task list
+    ac_type = st.selectbox("Select Aircraft Type", ["DHC6-300", "DHC6-400", "Bell-412"], 
+                           index=["DHC6-300", "DHC6-400", "Bell-412"].index(default_ac) if st.session_state.edit_mode else 0)
+    
+    available_tasks = get_tasks_by_ac_type(ac_type)
+    
+    # --- 3. FORM INPUT ---
+    with st.form("create_package_form", clear_on_submit=False):
+        st.write("### Edit Mode" if st.session_state.edit_mode else "### Create Mode")
+        
+        pkg_name = st.text_input("Package Name", value=default_name)
+        
+        if not available_tasks.empty:
+            # Pastikan default_tasks ada di dalam list available_tasks agar tidak error
+            valid_defaults = [t for t in default_tasks if t in available_tasks['task_id'].tolist()]
+            
+            selected_tasks = st.multiselect(
+                "Select Tasks",
+                options=available_tasks['task_id'].tolist(),
+                default=valid_defaults,
+                format_func=lambda x: f"{x} - {available_tasks.loc[available_tasks['task_id']==x, 'task_title'].values[0]}"
+            )
+        else:
+            st.warning("No tasks found.")
+            selected_tasks = []
+
+        # Tombol berubah nama jika sedang edit
+        label = "Update Package" if st.session_state.edit_mode else "Save Package"
+        submit = st.form_submit_button(label)
+        
+        if submit:
+            if pkg_name and selected_tasks:
+                # Jika edit, hapus yang lama dulu
+                if st.session_state.edit_mode:
+                    delete_maintenance_package(st.session_state.pkg_to_edit["id"])
+                
+                # Simpan data baru
+                success = save_maintenance_package(pkg_name, ac_type, selected_tasks)
+                if success:
+                    st.success("✅ Success!")
+                    # Reset Mode Edit
+                    st.session_state.edit_mode = False
+                    st.session_state.pkg_to_edit = {}
+                    st.rerun()
+            else:
+                st.error("Please fill all fields.")
+
+    # --- 4. MONITORING TABLE & REVISE BUTTON ---
+    st.divider()
+    df_pkgs = get_all_maintenance_packages()
+    if not df_pkgs.empty:
+        st.dataframe(df_pkgs, use_container_width=True, hide_index=True)
+        
+        with st.expander("🛠️ Manage Packages"):
+            col1, col2 = st.columns([2, 1])
+            selected_id = col1.selectbox("Select ID to Revise/Delete", df_pkgs['package_id'])
+            
+            if st.button("📝 Revise Now", use_container_width=True):
+                # Ambil data dari baris yang dipilih
+                row = df_pkgs[df_pkgs['package_id'] == selected_id].iloc[0]
+                
+                # Simpan ke session state
+                st.session_state.edit_mode = True
+                st.session_state.pkg_to_edit = {
+                    "id": selected_id,
+                    "name": row['package_name'],
+                    "ac_type": row['ac_type'],
+                    "tasks": row['tasks'].split(", ") # Pecah string jadi list
+                }
+                st.rerun() # Pemicu utama agar form di atas terisi data
+
+            if st.button("🗑️ Delete", type="primary", use_container_width=True):
+                if delete_maintenance_package(selected_id):
+                    st.rerun()
