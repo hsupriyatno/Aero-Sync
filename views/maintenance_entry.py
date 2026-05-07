@@ -166,13 +166,28 @@ def show(page_name):
             for j in range(1, 8):
                 with st.expander(f"Component Replacement #{j}"):
                     c1, c2, c3 = st.columns(3)
-                    pos = c1.selectbox(f"Pos {j}", ["", "E1", "E2", "AF", "AV"], key=f"pos_{j}")
+                    pos = c1.selectbox(f"Pos {j}", ["", "ONLY", "LH", "RH", "Center", "E1", "E2"], key=f"pos_{j}")
                     p_desc = c2.text_input(f"Part Desc {j}", key=f"p_desc_{j}")
                     grn = c3.text_input(f"GRN No {j}", key=f"grn_{j}")
                     col_rem, col_ins = st.columns(2)
-                    rem_pn, rem_sn = col_rem.text_input(f"Off P/N {j}", key=f"rem_pn_{j}"), col_rem.text_input(f"Off S/N {j}", key=f"rem_sn_{j}")
-                    ins_pn, ins_sn = col_ins.text_input(f"On P/N {j}", key=f"ins_pn_{j}"), col_ins.text_input(f"On S/N {j}", key=f"ins_sn_{j}")
-                    comp_replacements.append({"pos": pos, "p_desc": p_desc, "rem_pn": rem_pn, "rem_sn": rem_sn, "ins_pn": ins_pn, "ins_sn": ins_sn, "grn": grn})
+                    
+                    # Komponen yang dilepas (Off P/N)
+                    rem_pn = col_rem.text_input(f"Off P/N {j}", key=f"rem_pn_{j}")
+                    rem_sn = col_rem.text_input(f"Off S/N {j}", key=f"rem_sn_{j}")
+                    
+                    # Komponen yang dipasang (On P/N)
+                    ins_pn = col_ins.text_input(f"On P/N {j}", key=f"ins_pn_{j}")
+                    ins_sn = col_ins.text_input(f"On S/N {j}", key=f"ins_sn_{j}")
+                    
+                    comp_replacements.append({
+                        "pos": pos, 
+                        "p_desc": p_desc, 
+                        "rem_pn": rem_pn, 
+                        "rem_sn": rem_sn, 
+                        "ins_pn": ins_pn, 
+                        "ins_sn": ins_sn, 
+                        "grn": grn
+                    })
 
         if st.button("💾 Submit AML Entry", use_container_width=True, type="primary"):
             if aml_no:
@@ -180,56 +195,104 @@ def show(page_name):
                     conn = create_connection()
                     curr = conn.cursor()
 
-                    # --- PERBAIKAN DI SINI ---
-                    # Tambahkan kolom ac_tsn dan ac_csn ke dalam Query
+                    # --- 1. SIMPAN DATA PARENT (AML Utilization) ---
                     query_aml = """
                         INSERT INTO aml_utilization 
                         (aml_no, ac_type, ac_reg, date, departure, arrival, flight_hours, landings, ac_tsn, ac_csn) 
                         VALUES (?,?,?,?,?,?,?,?,?,?)
                     """
-                    
-                    # Masukkan variabel current_total_af_h dan current_total_af_l ke dalam tuple data
                     curr.execute(query_aml, (
                         aml_no, 
                         ac_type, 
-                        selected_ac, 
+                        selected_ac, # Pastikan variabel ini sesuai, atau selected_ac
                         str(date_entry), 
                         departure, 
                         arrival, 
                         float(input_fh), 
                         int(input_ld),
-                        float(current_total_af_h), # Pastikan ini angka
-                        int(current_total_af_l)     # Pastikan ini angka (CSN)
+                        float(current_total_af_h), 
+                        int(current_total_af_l)
                     ))
-                    # -------------------------
 
-                    # Simpan Engine Parameter (lanjutkan kode Bapak yang lama)
-                    curr.execute("INSERT INTO aml_engine_param (aml_no, press_alt, oat, ias, tq1, np1, t51, ng1, ff1, ot1, op1, oa1, tq2, np2, t52, ng2, ff2, ot2, op2, oa2) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", 
-                                (aml_no, press_alt, oat, ias, tq1, np1, t51, ng1, ff1, ot1, op1, oa1, tq2, np2, t52, ng2, ff2, ot2, op2, oa2))
+                    # Simpan Engine Parameter
+                    curr.execute("""
+                        INSERT INTO aml_engine_param 
+                        (aml_no, press_alt, oat, ias, tq1, np1, t51, ng1, ff1, ot1, op1, oa1, tq2, np2, t52, ng2, ff2, ot2, op2, oa2) 
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """, (aml_no, press_alt, oat, ias, tq1, np1, t51, ng1, ff1, ot1, op1, oa1, tq2, np2, t52, ng2, ff2, ot2, op2, oa2))
 
+                    # Simpan Pilot Report
                     for report in pilot_reports:
-                        # Pastikan hanya simpan jika ada deskripsi defect
                         if report['desc']: 
-                            # Pastikan nama kolom di SQL sesuai dengan database (defect_id)
                             curr.execute("""
                                 INSERT INTO aml_pilot_report (aml_no, defect_id, defect_desc, rectification, lame, status)
                                 VALUES (?, ?, ?, ?, ?, 'OPEN')
                             """, (aml_no, report['id'], report['desc'], report['rect'], report['lame']))
 
-                            # 3. JIKA DEFERRED, SIMPAN KE TABEL DEFERRED_DEFECTS
                             if report['deferred']:
                                 curr.execute("""
-                                    INSERT INTO deferred_defects (aml_no, ac_reg, defect_no, description, rectification, category, due_date)
+                                    INSERT INTO deferred_defects 
+                                    (aml_no, ac_reg, defect_no, description, rectification, category, due_date)
                                     VALUES (?, ?, ?, ?, ?, ?, ?)
                                 """, (aml_no, selected_ac, report['dd_no'], report['desc'], report['rect'], report['cat'], str(report['due'])))
 
-                            for comp in comp_replacements:
-                                if comp['pos']:
-                                    curr.execute("INSERT INTO aml_component_replacement (aml_no, pos, part_desc, rem_pn, rem_sn, ins_pn, ins_sn, grn) VALUES (?,?,?,?,?,?,?,?)", 
-                                                (aml_no, comp['pos'], comp['p_desc'], comp['rem_pn'], comp['rem_sn'], comp['ins_pn'], comp['ins_sn'], comp['grn']))
-                
+                    # --- 2. LOGIKA OTOMATIS COMPONENT REPLACEMENT ---
+                    for comp in comp_replacements:
+                        if comp['pos']:
+                            # A. Simpan transaksi ke tabel penggantian log
+                            # Saat menyimpan komponen baru (On P/N) ke database
+                            curr.execute("""
+                                INSERT INTO installed_components 
+                                (ac_reg, part_number, serial_number, install_date, install_af_hours, tsn_at_install)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            """, (selected_ac, comp['ins_pn'], comp['ins_sn'], str(date_entry), float(current_total_af_h), 0.0))
+
+                            # B. LOGIKA MENCAPOT (Update removal komponen lama)
+                            if comp['rem_sn'] and comp['rem_pn']:
+                                curr.execute("""
+                                    UPDATE component_history
+                                    SET remove_date = ?, 
+                                        remove_af_hours = ?
+                                    WHERE ac_reg = ? 
+                                    AND part_number = ? 
+                                    AND serial_number = ? 
+                                    AND remove_date IS NULL
+                                """, (str(date_entry), float(current_total_af_h), selected_ac, comp['rem_pn'], comp['rem_sn']))
+            
+                                # Hapus dari installed_components agar forecast bersih
+                                curr.execute("""
+                                    DELETE FROM installed_components 
+                                    WHERE ac_reg = ? AND part_number = ? AND serial_number = ?
+                                """, (selected_ac, comp['rem_pn'], comp['rem_sn']))
+
+                            # C. LOGIKA MEMASANG (Tambah komponen baru ke riwayat)
+                            if comp['ins_pn'] and comp['ins_sn']:
+                                curr.execute("""
+                                    INSERT INTO component_history 
+                                    (ac_reg, part_number, serial_number, install_date, install_af_hours, install_af_cycles, reason_removal)
+                                    VALUES (?, ?, ?, ?, ?, ?, 'Unscheduled')
+                                """, (selected_ac, comp['ins_pn'], comp['ins_sn'], str(date_entry), float(current_total_af_h), 0))
+
+                                curr.execute("""
+                                    INSERT INTO installed_components 
+                                    (ac_reg, component_name, position, part_number, parent_sn, 
+                                    install_date, install_af_hours, install_af_cycles, tsn_at_install, csn_at_install)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                """, (
+                                    selected_ac, 
+                                    comp['p_desc'],      # component_name
+                                    comp['pos'],         # position
+                                    comp['ins_pn'],      # part_number
+                                    comp['ins_sn'],      # parent_sn (Serial Number baru)
+                                    str(date_entry),     # install_date
+                                    float(current_total_af_h), # install_af_hours (JAM PESAWAT SAAT INI)
+                                    int(current_total_af_l),   # install_af_cycles (CYCLE PESAWAT SAAT INI)
+                                    0.0,                 # tsn_at_install (Mulai dari 0 jika komponen baru)
+                                    0                    # csn_at_install (Mulai dari 0 jika komponen baru)
+                                ))
+
                     conn.commit()
-                    st.success("✅ Success! Data & Deferred Defects Saved.")
+                    st.success("✅ Success! Transaksi dan riwayat komponen berhasil di-update.")
                     st.rerun()
                 except Exception as e:
                     conn.rollback()
@@ -237,7 +300,7 @@ def show(page_name):
                 finally:
                     conn.close()
 
-# --- LIST RECORDS (Cari bagian ini di bawah st.divider()) ---
+        # --- LIST RECORDS (Cari bagian ini di bawah st.divider()) ---
         st.divider()
         st.subheader("📋 Registered AML Records")
         conn = create_connection()
@@ -269,6 +332,57 @@ def show(page_name):
                                 st.error(f"Gagal hapus total: {e}")
         finally:
             conn.close()
+
+    elif page_name == "AD Compliance Entry":
+        st.subheader("🔍 Airworthiness Directive (AD) Compliance Entry")
+    
+        conn = create_connection()
+        # 1. Pastikan query mengambil 'ac_type' sesuai perubahan terakhir Bapak
+        df_ad = pd.read_sql_query("SELECT ad_number, ac_type FROM ad_catalog WHERE status = 'Active'", conn)
+    
+        if not df_ad.empty:
+            # Pindahkan Form ke sini agar rapi
+            with st.form("form_compliance"):
+                selected_ad = st.selectbox("Select AD Number", df_ad['ad_number'].tolist())
+            
+                # 2. Perbaikan KeyError: Gunakan 'ac_type' bukan 'ac_reg'
+                # Kita cari ac_type dari baris yang dipilih
+                mask = df_ad['ad_number'] == selected_ad
+                a_type = df_ad[mask]['ac_type'].values[0]
+            
+                st.info(f"Target Aircraft Type: {a_type}")
+            
+                # 3. Pilih Registrasi Pesawat yang sesuai dengan Tipe tersebut
+                df_fleet = pd.read_sql_query("SELECT ac_reg FROM catalog WHERE ac_type = ?", conn, params=(a_type,))
+                list_reg = df_fleet['ac_reg'].tolist() if not df_fleet.empty else []
+            
+                selected_reg = st.selectbox("Select Aircraft Registration", list_reg)
+            
+                col1, col2 = st.columns(2)
+                date_done = col1.date_input("Date Performed")
+                fh_done = col2.number_input("Compliance FH", min_value=0.0, step=0.1)
+                remarks = st.text_input("Maintenance Release / Form Number", placeholder="e.g., CRS-2026-001")
+            
+                # 4. WAJIB: Tambahkan tombol Submit di dalam blok 'with st.form'
+                submitted = st.form_submit_button("Update Compliance")
+            
+                if submitted:
+                    if selected_reg:
+                        curr = conn.cursor()
+                        # Simpan data ke tabel ad_compliance
+                        curr.execute("""
+                            INSERT INTO ad_compliance (ad_number, ac_type, ac_reg, date_done, fh_done, remarks) 
+                            VALUES (?,?,?,?,?,?)
+                        """, (selected_ad, a_type, selected_reg, str(date_done), fh_done, remarks))
+                        conn.commit()
+                        st.success(f"✅ Success! Compliance record for {selected_reg} updated.")
+                        st.rerun()
+                    else:
+                        st.error("Gagal! Pilih Aircraft Registration terlebih dahulu.")
+        else:
+            st.warning("Belum ada AD di Catalog. Silakan isi di menu Catalog terlebih dahulu.")
+    
+        conn.close()
 
 def show_update_maintenance_tasks():
     st.header("🛠️ Update Maintenance Tasks")

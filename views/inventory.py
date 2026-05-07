@@ -174,7 +174,10 @@ def show(page_name):
                                                  'edit_sn':row['serial_number'], 'edit_loc':row['current_location'], 'edit_stat':row['status']})
                         st.rerun()
                     if btn_del.button("🗑️", key=f"dl_{row['id']}"):
+                        from database import delete_sn  # <--- TAMBAHKAN BARIS INI
                         delete_sn(row['id'])
+                        st.rerun()
+
             # --- FORM EDIT MASTER S/N (Floating Expander) ---
             if st.session_state.get('edit_mode'):
                 with st.expander("🛠️ EDIT DATA SERIAL NUMBER", expanded=True):

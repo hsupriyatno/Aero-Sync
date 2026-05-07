@@ -197,6 +197,8 @@ def show(page_name):
                                 conn.commit()
                                 st.rerun()
 
+
+
 # === HALAMAN 3: MAINTENANCE CATALOG (Perbaikan di Sini) ===
         elif page_name == "Maintenance Catalog":
             st.header("🛠️ Maintenance Catalog")
@@ -236,11 +238,71 @@ def show(page_name):
             df_cat = pd.read_sql_query("SELECT * FROM maintenance_catalog", conn)
             st.dataframe(df_cat, use_container_width=True)
 
-# === HALAMAN 4: AIRWORTHINESS DIRECTIVES CATALOG ===
+        # === HALAMAN 4: AIRWORTHINESS DIRECTIVES CATALOG ===
 
         elif page_name == "Airworthiness Directives Catalog":
-            st.header("🛠️ Airworthiness Directives Catalog")
-            st.info("Master data untuk Airworthiness Directives individual.")
+            st.header("📋 Airworthiness Directives Catalog")
+            st.info("Daftarkan Master AD berdasarkan Tipe Pesawat di sini.")
+
+            conn = create_connection()
+            curr = conn.cursor()
+
+            # --- 1. Form Entry ---
+            with st.expander("➕ Register New AD Master", expanded=True):
+                # Ambil list tipe pesawat dari catalog
+                df_types = pd.read_sql_query("SELECT DISTINCT ac_type FROM catalog", conn)
+                type_list = df_types['ac_type'].tolist() if not df_types.empty else ["DHC6-300", "Bell 412", "B737-8 MAX"]
+
+                with st.form("form_ad_master", clear_on_submit=True):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        ac_type = st.selectbox("Aircraft Type", type_list)
+                        ad_num = st.text_input("AD Number", placeholder="e.g., FAA AD 2026-XX-XX")
+                        subject = st.text_area("Subject Description")
+            
+                    with col2:
+                        comp_type = st.radio("Compliance Type", ["One-time", "Repetitive"])
+                        interval_fh = st.number_input("Interval (Flight Hours)", min_value=0, step=100)
+                        interval_days = st.number_input("Interval (Days)", min_value=0, step=1, help="Misal: 365 untuk 1 tahun")
+
+                    if st.form_submit_button("Register New AD"):
+                        if ad_num:
+                            curr.execute("""
+                                INSERT INTO ad_catalog (ac_type, ad_number, subject, compliance_type, interval_fh, interval_days)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            """, (ac_type, ad_num, subject, comp_type, interval_fh, interval_days))
+                            conn.commit()
+                            st.success(f"✅ AD {ad_num} untuk {ac_type} berhasil disimpan!")
+                            st.rerun()
+                        else:
+                            st.error("AD Number tidak boleh kosong!")
+
+            # --- 2. Live Data View (Daftar yang sudah terdaftar) ---
+            st.divider()
+            st.subheader("📜 Registered AD Catalog")
+    
+            df_ad_list = pd.read_sql_query("SELECT * FROM ad_catalog ORDER BY ad_id DESC", conn)
+    
+            if not df_ad_list.empty:
+                # Menampilkan tabel dengan kolom yang rapi
+                st.dataframe(
+                    df_ad_list[['ac_type', 'ad_number', 'subject', 'compliance_type', 'interval_fh', 'interval_days']],
+                    use_container_width=True,
+                    hide_index=True
+                )
+        
+                # Fitur Hapus (Opsional untuk memudahkan Bapak jika ada salah input)
+                with st.expander("🗑️ Delete AD from Catalog"):
+                    ad_to_del = st.selectbox("Pilih AD untuk dihapus", df_ad_list['ad_number'].tolist())
+                    if st.button("Confirm Delete"):
+                        curr.execute("DELETE FROM ad_catalog WHERE ad_number = ?", (ad_to_del,))
+                        conn.commit()
+                        st.warning(f"AD {ad_to_del} telah dihapus dari catalog.")
+                        st.rerun()
+            else:
+                st.info("Belum ada AD yang terdaftar di catalog.")
+
+            conn.close()
 
 # === HALAMAN 4: SERVICE BULLETINS CATALOG ===
         elif page_name == "Service Bulletins Catalog":

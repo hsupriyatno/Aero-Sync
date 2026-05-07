@@ -60,13 +60,11 @@ def show():
                 total_required = item['required_qty'] * max(1, parent_count) if not is_layer_1 else item['required_qty']
 
                 # Cek Data Terpasang
-                curr.execute("SELECT serial_number FROM installed_components WHERE ac_reg = ? AND component_name = ?", 
-                             (selected_reg, item['sub_component']))
+                curr.execute("SELECT parent_sn FROM installed_components WHERE ac_reg = ? AND component_name = ?", (selected_reg, item['sub_component']))
                 already_in = len(curr.fetchall())
                 
                 # Display Only untuk Box
-                curr.execute("SELECT serial_number FROM installed_components WHERE ac_reg = ? AND component_name = ? LIMIT 1", 
-                             (selected_reg, item['parent_component']))
+                curr.execute("SELECT parent_sn FROM installed_components WHERE ac_reg = ? AND component_name = ?", (selected_reg, item['sub_component']))
                 p_data = curr.fetchone()
                 parent_info = p_data[0] if p_data else "Airframe"
 
@@ -257,7 +255,7 @@ def show():
             position AS POS, 
             component_name AS NAME, 
             part_number AS PN, 
-            serial_number AS SN, 
+            parent_sn AS SN,          -- Ganti serial_number AS SN menjadi parent_sn AS SN
             parent_sn AS PARENT_SN,
             install_af_hours, 
             tsn_at_install
