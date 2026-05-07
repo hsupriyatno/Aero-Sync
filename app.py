@@ -29,13 +29,13 @@ st.markdown("""
     <style>
     /* Menghilangkan padding default Streamlit di bagian atas */
     .block-container {
-        padding-top: 1.5rem !important; /* Kita beri sedikit napas agar tidak amblas */
+        padding-top: 0rem !important; /* Kita beri sedikit napas agar tidak amblas */
         padding-bottom: 0rem !important;
     }
     
     /* Mengatur judul utama agar proporsional */
     .main-title { 
-        font-size: 26px !important; 
+        font-size: 40px !important; 
         font-weight: bold; 
         color: #1E3A8A; 
         margin-top: 0px; /* Kita set ke 0 dulu supaya dia muncul kembali */
@@ -55,8 +55,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Pastikan class nya sesuai
-st.markdown('<p class="main-title">✈️ Aircraft Engineering, Reliability & Planning</p>', unsafe_allow_html=True)
+st.image("LOGO.png", width=300)
 
 # 4. LOGIKA NAVIGASI
 if 'page' not in st.session_state:
@@ -79,14 +78,14 @@ def get_index(options, current_page):
 
 # 5. DEFINISI MENU (Sangat Penting: Harus di atas sebelum dipanggil selectbox)
 cat_opts = ["", "Aircraft Catalog", "Aircraft Configuration", "Initial Component Installed", "Maintenance Catalog", "Airworthiness Directives Catalog", "Service Bulletins Catalog"]
-maint_opts = ["", "AML Entry", "Maintenance Package / Work Pack", "Update Maintenance Tasks"]
+maint_opts = ["", "AML Entry", "Maintenance Package / Work Pack", "Update Maintenance Tasks", "AD Compliance Entry"]
 status_opts = ["", "Aircraft Utilization Record", "Component Status", "Airworthiness Directive Status", "Service Bulletin Status"]
 eng_opts = ["", "Engineering Order", "Engineering Evaluation", "Deferred Defect"]
 inv_opts = ["", "Parts Catalog", "Parts In Stock", "Parts Usage History", "Incoming/Outgoing", "Allotment"]
 rcp_opts = ["", "RCPM Dashboard", "Defect Analysis", "Component Analysis", "ECTM", "Oil Consumption Analysis", "ETOPS Requirement"]
 proc_opts = ["", "Requisition", "Purchase Order", "Repair Order", "Vendor Management"]
 part_interchange_opts = ["", "Part Interchangeability Management"]  # Opsi untuk part interchange
-mat_plan_opts = ["", "Scheduled Removal", "Unscheduled Removal Forcasting", "Material Requisition", "Stock Control", "Ideal Floating Calculation"]  # Opsi untuk material planning
+mat_plan_opts = ["", "Scheduled Component Removal", "Unscheduled Removal Forcasting", "Material Requisition", "Stock Control", "Ideal Floating Calculation"]  # Opsi untuk material planning
 
 # Membuat list gabungan untuk fitur "Quick Jump" agar tidak NameError
 opsi_menu = ["Dashboard"] + cat_opts + maint_opts + status_opts + eng_opts + inv_opts + rcp_opts + proc_opts + part_interchange_opts + mat_plan_opts

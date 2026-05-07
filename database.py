@@ -11,6 +11,8 @@ try:
     curr.execute("ALTER TABLE installed_components ADD COLUMN install_af_cycles INTEGER DEFAULT 0")
     curr.execute("ALTER TABLE installed_components ADD COLUMN tsn_at_install REAL DEFAULT 0")
     curr.execute("ALTER TABLE installed_components ADD COLUMN csn_at_install INTEGER DEFAULT 0")
+    curr.execute("ALTER TABLE installed_components ADD COLUMN tso REAL DEFAULT 0")
+    curr.execute("ALTER TABLE installed_components ADD COLUMN cso INTEGER DEFAULT 0")
     conn.commit()
     print("Kolom database berhasil diperbarui!")
 except Exception as e:
@@ -104,7 +106,14 @@ def init_db():
         ac_reg TEXT, 
         component_name TEXT,
         position TEXT, 
-        part_number TEXT, 
+        part_number TEXT,
+        serial_number TEXT,
+        tsn REAL, 
+        csn INTEGER,
+        dsn INTEGER,
+        tso REAL, 
+        cso INTEGER,
+        dso INTEGER,
         parent_sn TEXT,
     
         -- Simpan data kondisi SAAT PASANG di sini
@@ -281,7 +290,7 @@ def init_db():
         )
     """)
 
-# 19. Material Request - Ditambah UOM
+    # 19. Material Request - Ditambah UOM
     curr.execute("""
         CREATE TABLE IF NOT EXISTS material_request (
             request_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -298,8 +307,37 @@ def init_db():
         )
     """)
 
+    # 20. Tabel AD Catalog dan Compliance
+    curr.execute("""
+        CREATE TABLE IF NOT EXISTS ad_catalog (
+            ad_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            ac_type TEXT,
+            ad_number TEXT,
+            subject TEXT,
+            compliance_type TEXT,
+            threshold_fh INTEGER DEFAULT 0,
+            interval_fh INTEGER DEFAULT 0,
+            interval_days INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'Active'
+        )
+    """)
+    # Tabel AD Compliance (Histori Pengerjaan)
+    curr.execute("""
+        CREATE TABLE IF NOT EXISTS ad_compliance (
+            comp_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ad_number TEXT,
+            ac_type TEXT,
+            ac_reg TEXT,
+            date_done DATE,
+            fh_done INTEGER,
+            remarks TEXT
+        )
+    """)
+
     conn.commit()
     conn.close()
+
 
 def get_tasks_by_ac_type(ac_type):
     # Gunakan create_connection() agar path database konsisten (Laptop vs Cloud)
@@ -456,6 +494,17 @@ def save_material_request(ac_reg, pn, priority, qty, uom, remark):
     except Exception as e:
         print(f"Error saving MR: {e}")
         return False
+    finally:
+        conn.close()
+
+def delete_sn(sn_id):
+    conn = create_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM master_serial_number WHERE id = ?", (sn_id,))
+        conn.commit()
+    except Exception as e:
+        print(f"Error deleting SN: {e}")
     finally:
         conn.close()
 
