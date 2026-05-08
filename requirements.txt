@@ -5,3 +5,6 @@ openpyxl
 streamlit-option-menu
 fpdf2
 pip install fpdf
+streamlit
+pandas
+fpdf
