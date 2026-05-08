@@ -239,13 +239,13 @@ def show(page_name):
                         "Next Due (FH)": due_fh, "Rem FH": rem_fh, "Status": st_label
                     })
 
-                    # Row HTML
-                    # 1. Rakit teks Last Compliance tanpa f-string agar aman 100%
+                    # --- BAGIAN PEMBUAT BARIS TABEL (RAPID) ---
+                    # 1. Rakit teks Last Compliance manual (Anti-Backslash Error)
                     txt_date = str(row['date_done'])
                     txt_fh = str(row['fh_done'])
                     lc_display = txt_date + " (" + txt_fh + " FH)" 
 
-                    # 2. Gunakan .format() untuk merakit baris tabel
+                    # 2. Masukkan ke HTML Table (Gunakan .format agar aman)
                     html_table += "<tr><td>{}</td><td>{}</td><td style='text-align:left'>{}</td><td>{}</td><td>{}</td><td>{}</td><td><span class='status-badge {}'>{}</span></td></tr>".format(
                         row['ac_reg'], 
                         row['ad_number'], 
@@ -256,7 +256,8 @@ def show(page_name):
                         badge_class, 
                         st_label
                     )
-                    
+
+                # --- TUTUP TABEL (Pastikan indentasi sejajar dengan 'for') ---
                 html_table += "</tbody></table>"
                 st.markdown(html_table, unsafe_allow_html=True)
                 df_final = pd.DataFrame(status_list)
