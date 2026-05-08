@@ -262,19 +262,15 @@ def show(page_name):
 
                 # Tombol Download
                 # Ambil output string dari fungsi
-                pdf_output = pdf.output(dest='S')
-
-                if isinstance(pdf_output, str):
-                    # Jika output masih string, konversi ke bytes
-                    pdf_bytes = pdf_output.encode('latin-1')
-                else:
-                    # Jika sudah bytes/bytearray, jangan di-encode lagi
-                    pdf_bytes = pdf_output
-
+                pdf_output = generate_pdf_report(df_final)
+    
+                # Konversi ke Bytes secara manual di sini agar stabil
+                pdf_bytes = bytes(pdf_output, 'latin-1') 
+    
                 st.download_button(
-                    label="📕 Download PDF",
-                    data=pdf_bytes,
-                    file_name="report.pdf",
+                    label="📕 Download PDF Report",
+                    data=pdf_bytes, # Masukkan data yang sudah jadi bytes
+                    file_name="AD_Report.pdf",
                     mime="application/pdf"
                 )
 
