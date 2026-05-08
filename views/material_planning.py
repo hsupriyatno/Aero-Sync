@@ -98,13 +98,22 @@ def show_unscheduled_removal_forecasting():
     # 3. Hitung Statistik dari Database
     # Ambil Total Unscheduled Removal
     query_ur = f"SELECT COUNT(*) as total_ur FROM component_history WHERE part_number = '{selected_pn}' AND reason_removal = 'Unscheduled'"
-    ur_count = pd.read_sql_query(query_ur, conn).iloc[0]['total_ur']
+    df_ur = pd.read_sql_query(query_ur, conn)
     
-    # Ambil Total Fleet FH (Asumsi untuk tipe pesawat yang menggunakan PN tersebut)
+    # Amankan pengambilan data (Gunakan if not empty)
+    if not df_ur.empty:
+        ur_count = df_ur.iloc[0]['total_ur']
+    else:
+        ur_count = 0
+    
+    # Ambil Total Fleet FH
     query_fh = "SELECT SUM(flight_hours) as total_fh FROM aml_utilization"
-    total_fh = pd.read_sql_query(query_fh, conn).iloc[0]['total_fh'] or 1 # Avoid div by zero
+    df_fh = pd.read_sql_query(query_fh, conn)
     
-    conn.close()
+    if not df_fh.empty and df_fh.iloc[0]['total_fh'] is not None:
+        total_fh = df_fh.iloc[0]['total_fh']
+    else:
+        total_fh = 1 # Hindari pembagian dengan nol
 
     # 4. Kalkulasi MTBUR & Removal Rate
     mtbur = (total_fh * qpa) / ur_count if ur_count > 0 else total_fh * qpa
