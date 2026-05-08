@@ -77,8 +77,8 @@ def get_detailed_history(ac_reg, start_date, end_date):
             landings AS [FC],
             ac_tsn AS [TSN],
             ac_csn AS [CSN],
-            departure AS [From],
-            arrival AS [To]
+            departure AS departure_loc,  -- Tambahkan 'AS departure_loc'
+            arrival AS arrival_loc       -- Tambahkan 'AS arrival_loc'
         FROM aml_utilization
         WHERE ac_reg = ? AND date BETWEEN ? AND ?
         ORDER BY date DESC, aml_no DESC
