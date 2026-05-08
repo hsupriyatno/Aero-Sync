@@ -261,20 +261,19 @@ def show(page_name):
                 df_final = pd.DataFrame(status_list)
 
                 # Tombol Download
-                c1 = st.columns(1)
-                with c1:
-                    # Ambil output string dari fungsi
-                    pdf_output = generate_pdf_report(df_final)
+                # Ambil output string dari fungsi
+                pdf_output = generate_pdf_report(df_final)
     
-                    # Konversi ke Bytes secara manual di sini agar stabil
-                    pdf_bytes = bytes(pdf_output, 'latin-1') 
+                # Konversi ke Bytes secara manual di sini agar stabil
+                pdf_bytes = bytes(pdf_output, 'latin-1') 
     
-                    st.download_button(
-                        label="📕 Download PDF Report",
-                        data=pdf_bytes, # Masukkan data yang sudah jadi bytes
-                        file_name="AD_Report.pdf",
-                        mime="application/pdf"
-                    )
+                st.download_button(
+                    label="📕 Download PDF Report",
+                    data=pdf_bytes, # Masukkan data yang sudah jadi bytes
+                    file_name="AD_Report.pdf",
+                    mime="application/pdf"
+                )
+
 
 
 # === HALAMAN 4: COMPONENT STATUS ===
