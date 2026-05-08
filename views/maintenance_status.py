@@ -219,44 +219,47 @@ def show(page_name):
                 # Membangun tabel HTML
                 html_table = '<table class="report-table"><thead><tr><th>Reg</th><th>AD Number</th><th>Subject</th><th>Type</th><th>Last Compliance</th><th>Next FH</th><th>Status</th></tr></thead><tbody>'
                 
-                for _, row in df_ad.iterrows():
-                    # Ambil Current TSN dari df_util_global
-                    ac_info = df_util_global[df_util_global['Registration'] == row['ac_reg']]
-                    curr_fh = ac_info['Current TSN'].values[0] if not ac_info.empty else 0
-                    
-                    due_fh = row['fh_done'] + row['interval_fh'] if row['date_done'] and row['interval_fh'] > 0 else "-"
-                    rem_fh = round(due_fh - curr_fh, 2) if isinstance(due_fh, (int, float)) else "-"
-                    
-                    st_label = "NORMAL"
-                    badge_class = "normal"
-                    if isinstance(rem_fh, (int, float)):
-                        if rem_fh <= 0:
-                            st_label = "OVERDUE"; badge_class = "overdue"
-                        elif rem_fh < 50:
-                            st_label = "DUE SOON"; badge_class = "soon"
-
-                    # --- PERBAIKAN: Definisikan teks compliance dulu agar aman dari error backslash ---
-                    txt_date = str(row['date_done'])
-                    txt_fh = str(row['fh_done'])
-                    clean_lc = txt_date + " (" + txt_fh + " FH)"
-
-                    # Data untuk Export
-                    status_list.append({
-                        "Registration": row['ac_reg'], 
-                        "AD Number": row['ad_number'], 
-                        "Subject": row['subject'],
-                        "Type": row['compliance_type'], 
-                        "Last Compliance": clean_lc,
-                        "Next Due (FH)": due_fh, 
-                        "Rem FH": rem_fh, 
-                        "Status": st_label
-                    })
-
-                    # Tambah Baris ke HTML
-                    html_table += f"<tr><td>{row['ac_reg']}</td><td>{row['ad_number']}</td><td style='text-align:left'>{row['subject']}</td><td>{row['compliance_type']}</td><td>{clean_lc}</td><td>{due_fh}</td><td><span class='status-badge {badge_class}'>{st_label}</span></td></tr>"
-                
-                html_table += "</tbody></table>"
-                st.markdown(html_table, unsafe_allow_html=True)
+for item in data:
+    status_class = ""
+    status_text = item['Status']
+    if "NORMAL" in status_text: status_class = "status-normal"
+    elif "OVERDUE" in status_text: status_class = "status-overdue"
+    elif "COMPLIED" in status_text: status_class = "status-complied"
+    
+    # KUNCINYA DI SINI: Bersihkan teks di luar, simpan di variabel
+    # Pakai penggabungan string biasa (+) agar aman dari backslash
+    raw_lc = str(item['Last Compliance'])
+    lc_clean = raw_lc.replace('\n', '<br>')
+    
+    # Gunakan .format() daripada f-string agar Python lama tidak protes
+    row_html = """
+            <tr>
+                <td>{reg}</td>
+                <td>{ad_no}</td>
+                <td class="align-left">{subj}</td>
+                <td>{ctype}</td>
+                <td>{lc}</td>
+                <td>{nfh}</td>
+                <td>{ndt}</td>
+                <td>{rfh}</td>
+                <td>{rd}</td>
+                <td class="{s_class}">{s_text}</td>
+            </tr>
+    """.format(
+        reg=item['Registration'],
+        ad_no=item['AD Number'],
+        subj=item['Subject'],
+        ctype=item['Type'],
+        lc=lc_clean, # <--- Sudah bersih
+        nfh=item['Next Due (FH)'],
+        ndt=item['Next Due (Date)'],
+        rfh=item['Rem FH'],
+        rd=item['Rem Days'],
+        s_class=status_class,
+        s_text=status_text
+    )
+    
+    html_content += row_html
                 
                 df_final = pd.DataFrame(status_list)
 
