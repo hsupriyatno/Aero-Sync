@@ -240,10 +240,22 @@ def show(page_name):
                     })
 
                     # Row HTML
-                    lc_display = f"{row['date_done']} ({row['fh_done']})"
+                    # 1. Rakit teks Last Compliance tanpa f-string agar aman 100%
+                    txt_date = str(row['date_done'])
+                    txt_fh = str(row['fh_done'])
+                    lc_display = txt_date + " (" + txt_fh + " FH)" 
 
+                    # 2. Gunakan .format() untuk merakit baris tabel
                     html_table += "<tr><td>{}</td><td>{}</td><td style='text-align:left'>{}</td><td>{}</td><td>{}</td><td>{}</td><td><span class='status-badge {}'>{}</span></td></tr>".format(
-                        row['ac_reg'], row['ad_number'], row['subject'], row['compliance_type'], lc_display, due_fh, badge_class, st_label
+                        row['ac_reg'], 
+                        row['ad_number'], 
+                        row['subject'], 
+                        row['compliance_type'], 
+                        lc_display, 
+                        due_fh, 
+                        badge_class, 
+                        st_label
+                    )
                     )
                 html_table += "</tbody></table>"
                 st.markdown(html_table, unsafe_allow_html=True)
