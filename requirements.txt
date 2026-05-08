@@ -8,3 +8,4 @@ fpdf
 plotly
 graphviz
 scipy
+numpy
