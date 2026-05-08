@@ -111,10 +111,14 @@ def show_unscheduled_removal_forecasting():
     removal_rate_1000 = (ur_count * 1000) / (total_fh * qpa) if total_fh > 0 else 0
     
     # 5. Poisson untuk Ideal Floating
-    # Lambda = (Expected Removals selama TAT)
-    # Formula: (Removal Rate per hour) * QPA * (TAT in hours)
-    daily_fh = total_fh / 365 # Estimasi FH per hari fleet
-    lambda_tat = (ur_count / total_fh) * (daily_fh * tat)
+    daily_fh = total_fh / 365
+    lambda_tat = (ur_count / total_fh) * (daily_fh * tat) if total_fh > 0 else 0
+
+    # Mencari jumlah stok (k) dengan pengaman jika lambda_tat sangat kecil
+    if lambda_tat > 0:
+        ideal_stock = poisson.ppf(confidence, lambda_tat)
+    else:
+        ideal_stock = 0
 
     # Mencari jumlah stok (k) agar probabilitas akumulatif >= confidence level
     ideal_stock = poisson.ppf(confidence, lambda_tat)
@@ -128,12 +132,14 @@ def show_unscheduled_removal_forecasting():
     st.write(f"💡 *Berdasarkan data, probabilitas kebutuhan selama {tat} hari TAT adalah {int(ideal_stock)} unit untuk mencapai service level {int(confidence*100)}%.*")
 
 def show(page):
-    # Gunakan nama yang persis sama dengan sidebar (cek ejaan Forecasting)
-    if page == "Scheduled Component Removal":
+    # Gunakan lowercase dan hilangkan spasi untuk perbandingan yang lebih aman
+    page_id = page.lower().replace(" ", "")
+    
+    if "scheduledcomponent" in page_id:
         show_scheduled_removal()
-    elif page == "Unscheduled Removal Forecasting" or page == "Unscheduled Removal Forcasting":
+    elif "unscheduled" in page_id:
         show_unscheduled_removal_forecasting()
-    elif page == "Material Requisition":
+    elif "requisition" in page_id:
         st.subheader("📝 Material Requisition Module")
         st.info("Form permintaan barang akan muncul di sini.")
     else:
