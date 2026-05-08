@@ -41,7 +41,7 @@ def generate_pdf_report(df_input):
         pdf.cell(widths[7], 7, str(row.get('Rem FH', '')), border=1, align='C')
         pdf.cell(widths[8], 7, str(row.get('Status', '')), border=1, align='C')
         pdf.ln()
-    return pdf.output(dest='S').encode('latin-1')
+    return pdf.output(dest='S') # Langsung 'S' saja, tidak perlu .encode() di sini
 
 def get_utilization_data():
     conn = create_connection()
@@ -263,8 +263,18 @@ def show(page_name):
                 # Tombol Download
                 c1, c2 = st.columns(2)
                 with c1:
-                    pdf_data = generate_pdf_report(df_final)
-                    st.download_button("📕 Download PDF Report", pdf_data, "AD_Report.pdf", "application/pdf")
+                    # Ambil output string dari fungsi
+                    pdf_output = generate_pdf_report(df_final)
+    
+                    # Konversi ke Bytes secara manual di sini agar stabil
+                    pdf_bytes = bytes(pdf_output, 'latin-1') 
+    
+                    st.download_button(
+                        label="📕 Download PDF Report",
+                        data=pdf_bytes, # Masukkan data yang sudah jadi bytes
+                        file_name="AD_Report.pdf",
+                        mime="application/pdf"
+                    )
                 with c2:
                     csv = df_final.to_csv(index=False).encode('utf-8')
                     st.download_button("📊 Download CSV Report", csv, "AD_Report.csv", "text/csv")
