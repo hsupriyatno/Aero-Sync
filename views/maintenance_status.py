@@ -21,13 +21,12 @@ def generate_pdf_report(df_input):
 
     pdf.set_font("Arial", 'B', 8)
     pdf.set_fill_color(240, 240, 240)
-    widths = [15, 35, 75, 20, 35, 25, 25, 20, 27] 
+    widths = [15, 35, 75, 20, 35, 25, 25, 20, 27]
     headers = ["Reg", "AD Number", "Subject", "Type", "Last Compliance", "Next FH", "Next Date", "Rem FH", "Status"]
 
     for i in range(len(headers)):
         pdf.cell(widths[i], 8, headers[i], border=1, align='C', fill=True)
     pdf.ln()
-
     pdf.set_font("Arial", '', 7)
     for _, row in df_input.iterrows():
         # Clean data dari newline untuk PDF
@@ -47,7 +46,7 @@ def generate_pdf_report(df_input):
 def get_utilization_data():
     conn = create_connection()
     query = """
-    SELECT 
+    SELECT
         c.ac_reg AS [Registration], c.ac_type AS [Type],
         c.tsn AS [Start TSN], c.csn AS [Start CSN],
         IFNULL(SUM(a.flight_hours), 0) AS [Accumulated FH],
@@ -68,14 +67,15 @@ def get_detailed_history(ac_reg, start_date, end_date):
     Digunakan untuk tabel 'Detailed Utilization History'.
     """
     conn = create_connection()
+
     try:
         query = """
-        SELECT 
-            date AS [Date], 
-            aml_no AS [AML No], 
-            flight_hours AS [FH], 
-            landings AS [FC], 
-            ac_tsn AS [TSN], 
+        SELECT
+            date AS [Date],
+            aml_no AS [AML No],
+            flight_hours AS [FH],
+            landings AS [FC],
+            ac_tsn AS [TSN],
             ac_csn AS [CSN],
             departure AS [From],
             arrival AS [To]
@@ -111,21 +111,16 @@ def show(page_name):
     """, unsafe_allow_html=True)
 
     conn = create_connection()
-
     try:
         df_util_global = get_utilization_data()
-
         # === HALAMAN 1: AIRCRAFT UTILIZATION RECORD ===
         if page_name == "Aircraft Utilization Record":
             st.header("✈️ Aircraft Utilization Record")
-            
             df_util = get_utilization_data()
-            
             if not df_util.empty:
                 # Menampilkan Summary dalam bentuk Metric Cards
                 st.markdown('<p class="section-font">Fleet Summary Status</p>', unsafe_allow_html=True)
                 cols = st.columns(len(df_util))
-                
                 for i, row in df_util.iterrows():
                     with cols[i]:
                         st.markdown(f"""
@@ -136,18 +131,16 @@ def show(page_name):
                             <span style="color: #666;">CSN: {int(row['Current CSN'])}</span>
                         </div>
                         """, unsafe_allow_html=True)
-                
+
                 st.divider()
-                
                 # Menampilkan Tabel Detail
                 st.markdown('<p class="section-font">Detailed Utilization Table</p>', unsafe_allow_html=True)
                 st.dataframe(df_util, use_container_width=True, hide_index=True)
-                
+            
                 # --- Tombol Export Excel ---
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     df_util.to_excel(writer, index=False, sheet_name='Utilization_Report')
-                    
                     # Tambahan opsional: Formatting agar kolom Excel otomatis pas lebarnya
                     workbook  = writer.book
                     worksheet = writer.sheets['Utilization_Report']
@@ -167,41 +160,37 @@ def show(page_name):
             # --- BAGIAN BARU: DETAILED UTILIZATION HISTORY ---
             st.divider()
             st.markdown('<p class="section-font">🔍 Filter Detailed Utilization History</p>', unsafe_allow_html=True)
-            
             # Form Filter
             with st.container():
                 col1, col2, col3 = st.columns(3)
-                
                 with col1:
                     list_reg = df_util['Registration'].unique()
                     # Gunakan SATU selectbox saja di sini
                     selected_reg = st.selectbox("Select A/C Reg:", list_reg, key="reg_util_filter")
-                
+
                 with col2:
                     start_d = st.date_input("Start Date:", value=datetime(2026, 1, 1), key="start_util")
-                
+               
                 with col3:
                     end_d = st.date_input("End Date:", value=datetime.now(), key="end_util")
 
             # HAPUS baris 'list_reg = ...' dan 'selected_reg = ...' yang tadinya ada di sini (di luar kolom)
-
             # Eksekusi Query menggunakan variabel dari selectbox di atas
             if selected_reg:
                 df_history = get_detailed_history(
-                    selected_reg, 
-                    start_d.strftime('%Y-%m-%d'), 
+                    selected_reg,
+                    start_d.strftime('%Y-%m-%d'),
                     end_d.strftime('%Y-%m-%d')
                 )
-                
+
                 if not df_history.empty:
                     st.write(f"Showing results for **{selected_reg}** from **{start_d}** to **{end_d}**")
                     st.dataframe(df_history, use_container_width=True, hide_index=True)
-                    
                     # Tombol download
                     buffer_hist = io.BytesIO()
                     with pd.ExcelWriter(buffer_hist, engine='xlsxwriter') as writer:
                         df_history.to_excel(writer, index=False, sheet_name='History')
-                    
+
                     st.download_button(
                         label=f"📊 Export History {selected_reg} (Excel)",
                         data=buffer_hist.getvalue(),
@@ -214,9 +203,8 @@ def show(page_name):
         # --- AD STATUS ---
         elif page_name == "Airworthiness Directive Status":
             st.header("📋 Airworthiness Directive Status")
-            
             query_ad = """
-                SELECT m.ad_number, m.ac_type, m.subject, m.compliance_type, 
+                SELECT m.ad_number, m.ac_type, m.subject, m.compliance_type,
                        m.interval_fh, m.interval_days, c.ac_reg, c.date_done, c.fh_done
                 FROM ad_catalog m
                 LEFT JOIN ad_compliance c ON m.ad_number = c.ad_number
@@ -229,24 +217,23 @@ def show(page_name):
                 status_list = []
                 # Membangun tabel HTML secara manual agar garis muncul
                 html_table = '<table class="report-table"><thead><tr><th>Reg</th><th>AD Number</th><th>Subject</th><th>Type</th><th>Last Compliance</th><th>Next FH</th><th>Status</th></tr></thead><tbody>'
-                
+               
                 for _, row in df_ad.iterrows():
                     ac_info = df_util_global[df_util_global['Registration'] == row['ac_reg']]
                     curr_fh = ac_info['Current TSN'].values[0] if not ac_info.empty else 0
-                    
                     due_fh = row['fh_done'] + row['interval_fh'] if row['date_done'] and row['interval_fh'] > 0 else "-"
                     rem_fh = round(due_fh - curr_fh, 2) if isinstance(due_fh, (int, float)) else "-"
-                    
                     st_label = "NORMAL"
                     badge_class = "normal"
                     if isinstance(rem_fh, (int, float)):
-                        if rem_fh <= 0: 
+                        if rem_fh <= 0:
                             st_label = "OVERDUE"; badge_class = "overdue"
-                        elif rem_fh < 50: 
+                        elif rem_fh < 50:
                             st_label = "DUE SOON"; badge_class = "soon"
 
                     # Data untuk Export
                     status_list.append({
+
                         "Registration": row['ac_reg'], "AD Number": row['ad_number'], "Subject": row['subject'],
                         "Type": row['compliance_type'], "Last Compliance": f"{row['date_done']} ({row['fh_done']})",
                         "Next Due (FH)": due_fh, "Rem FH": rem_fh, "Status": st_label
@@ -254,12 +241,10 @@ def show(page_name):
 
                     # Row HTML
                     html_table += f"<tr><td>{row['ac_reg']}</td><td>{row['ad_number']}</td><td style='text-align:left'>{row['subject']}</td><td>{row['compliance_type']}</td><td>{row['date_done']} ({row['fh_done']})</td><td>{due_fh}</td><td><span class='status-badge {badge_class}'>{st_label}</span></td></tr>"
-                
                 html_table += "</tbody></table>"
                 st.markdown(html_table, unsafe_allow_html=True)
-                
                 df_final = pd.DataFrame(status_list)
-                
+
                 # Tombol Download
                 c1, c2 = st.columns(2)
                 with c1:
@@ -269,52 +254,48 @@ def show(page_name):
                     csv = df_final.to_csv(index=False).encode('utf-8')
                     st.download_button("📊 Download CSV Report", csv, "AD_Report.csv", "text/csv")
 
+
+
 # === HALAMAN 4: COMPONENT STATUS ===
         elif page_name == "Component Status":
             st.header("✈️ Component Status")
-    
             df_util = get_utilization_data()
             list_reg = df_util['Registration'].unique()
             selected_reg = st.selectbox("Select Aircraft Registration:", list_reg, key="reg_comp")
-    
             st.subheader(f"📊 Detailed Component Status - {selected_reg}")
-
             # 1. Hitung Jam Terbang Real-time
             conn = create_connection()
             curr = conn.cursor()
-    
             curr.execute("SELECT tsn, csn FROM catalog WHERE ac_reg = ?", (selected_reg,))
             base_data = curr.fetchone()
-    
+   
             curr.execute("SELECT SUM(flight_hours), SUM(landings) FROM aml_utilization WHERE ac_reg = ?", (selected_reg,))
             acc_data = curr.fetchone()
-    
             current_ac_hrs = (base_data[0] or 0) + (acc_data[0] or 0)
             current_ac_cyc = (base_data[1] or 0) + (acc_data[1] or 0)
-
             st.info(f"**Current Airframe Status:** TSN: {current_ac_hrs:.2f} Hours / CSN: {int(current_ac_cyc)} Cycles")
 
             # 2. Query Data Gabungan
             # Tambahkan filter 'AND i.parent_sn != 0' dan 'AND i.parent_sn != '''
             query = f"""
-                SELECT 
+                SELECT
                     i.component_name, i.part_number, i.parent_sn, i.position,
                     i.install_af_hours, i.install_af_cycles,
                     i.tsn_at_install, i.csn_at_install, i.tso, i.cso, i.install_date,
                     m.tbo_hours, m.tbo_cycles, m.tbo_calendar
                 FROM installed_components i
                 LEFT JOIN master_part_number m ON i.part_number = m.part_number
-                WHERE i.ac_reg = '{selected_reg}' 
-                AND i.parent_sn IS NOT NULL 
-                AND i.parent_sn != '' 
+                WHERE i.ac_reg = '{selected_reg}'
+                AND i.parent_sn IS NOT NULL
+                AND i.parent_sn != ''
                 AND i.parent_sn != '0'
             """
+
             df = pd.read_sql_query(query, conn)
             df = df.fillna(0) # Mengisi semua data NaN/NULL dengan angka 0
             df = df[df['parent_sn'] != 0]
             df = df[df['parent_sn'] != '0']
             df = df[df['component_name'] != 0]
-
             cols_to_fix = ['install_af_cycles', 'csn_at_install', 'cso', 'm.tbo_cycles']
             for col in cols_to_fix:
                 if col in df.columns:
@@ -323,23 +304,23 @@ def show(page_name):
             if not df.empty:
                 status_list = []
                 today = datetime.now().date()
-
                 for _, row in df.iterrows():
                     # Kalkulasi Selisih Jam Pesawat sejak pemasangan
                     diff_hrs = current_ac_hrs - row['install_af_hours']
                     diff_cyc = current_ac_cyc - row['install_af_cycles']
-            
+
                     # 1. Total Since New (TSN/CSN/DSN)
                     # Rumus: Jam saat install + pemakaian sejak install
                     total_tsn = (row['tsn_at_install'] or 0) + diff_hrs
                     total_csn = (row['csn_at_install'] or 0) + diff_cyc
                     # DSN dihitung sejak install_date sampai hari ini
                     days_since = (today - pd.to_datetime(row['install_date']).date()).days if row['install_date'] else 0
-            
+
+
                     # 2. Current Status (TSO/CSO/DSO)
                     cur_tso = (row['tso'] or 0) + diff_hrs
                     cur_cso = (row['cso'] or 0) + diff_cyc
-            
+
                     # 3. Remaining Calculation (Berdasarkan TBO)
                     rem_hrs = (row['tbo_hours'] or 0) - cur_tso if row['tbo_hours'] else 0
                     rem_cyc = (row['tbo_cycles'] or 0) - cur_cso if row['tbo_cycles'] else 0
@@ -347,10 +328,10 @@ def show(page_name):
 
                     # Formatting Multiline untuk tabel rapat
                     tbo_combined = f"{row['tbo_hours'] or 0} H\n{int(row['tbo_cycles'] or 0)} C\n{int(row['tbo_calendar'] or 0)} M"
-                    
+
+              
                     # KOLOM BARU: TSN/CSN/DSN
                     tsn_combined = f"{total_tsn:.2f} TSN\n{int(total_csn)} CSN\n{int(days_since)} DSN"
-                    
                     tso_combined = f"{cur_tso:.2f} TSO\n{int(cur_cso)} CSO\n{int(days_since)} DSO"
                     rem_combined = f"{rem_hrs:.2f} H\n{int(rem_cyc)} C\n{max(0, round(rem_mon, 1))} M"
 
@@ -363,13 +344,14 @@ def show(page_name):
                         "TSN/CSN/DSN": tsn_combined,          # Ditambahkan
                         "Current (TSO/CSO/DSO)": tso_combined,
                         "Remaining": rem_combined
+
                     })
-                
+
                 df_final = pd.DataFrame(status_list)
-                
+   
+
                 # --- INI DIA BAGIAN YANG TADI TERLEWAT, PAK ---
                 df_final = pd.DataFrame(status_list)
-
                 # 3. Tombol Export
                 col_space, col_btn = st.columns([5, 1])
                 with col_btn:
@@ -379,8 +361,9 @@ def show(page_name):
                     st.download_button(label="📥 Export Excel", data=buffer.getvalue(), file_name=f"Status_{selected_reg}.xlsx")
 
                 # 4. TAMPILAN TABEL DENGAN INLINE STYLE
+
                 html_table = df_final.to_html(escape=False, index=False).replace("\\n", "<br>")
-    
+
                 styled_table = f"""
                 <style>
                     .my-custom-table {{
@@ -389,27 +372,32 @@ def show(page_name):
                         font-size: 11px !important;
                         font-family: sans-serif;
                     }}
+
                     .my-custom-table th {{
                         background-color: #f0f2f6;
                         text-align: left;
                         padding: 4px !important;
                         border: 1px solid #dee2e6;
+
                     }}
+
                     .my-custom-table td {{
                         padding: 2px 4px !important;
                         line-height: 1.1 !important;
                         border: 1px solid #dee2e6;
                         vertical-align: middle;
                     }}
+
                 </style>
                 <div class="my-custom-table">
                     {html_table.replace('class="dataframe"', 'class="my-custom-table"')}
                 </div>
                 """
-                st.components.v1.html(styled_table, height=500, scrolling=True)
 
+                st.components.v1.html(styled_table, height=500, scrolling=True)
             else:
                 st.info("Belum ada data komponen.")
 
     except Exception as e:
+
         st.error(f"Error pada halaman {page_name}: {e}")
