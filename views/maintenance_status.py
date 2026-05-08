@@ -1,23 +1,59 @@
 import streamlit as st
 import pandas as pd
+from fpdf import FPDF
 import io
-from datetime import datetime  # Pastikan baris ini ada
+from datetime import datetime, timedelta
 from database import create_connection
+import base64
+
+# ==========================================
+# 1. FUNGSI PENDUKUNG (DATA & EXPORT)
+# ==========================================
+
+def generate_pdf_report(df_input):
+    """Fungsi Generator PDF untuk AD Status"""
+    pdf = FPDF(orientation='L', unit='mm', format='A4')
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 16)
+    pdf.set_text_color(26, 58, 95)
+    pdf.cell(0, 10, "AIRWORTHINESS DIRECTIVE STATUS REPORT", ln=True, align='C')
+    pdf.ln(5)
+
+    pdf.set_font("Arial", 'B', 8)
+    pdf.set_fill_color(240, 240, 240)
+    widths = [15, 35, 75, 20, 35, 25, 25, 20, 27] 
+    headers = ["Reg", "AD Number", "Subject", "Type", "Last Compliance", "Next FH", "Next Date", "Rem FH", "Status"]
+
+    for i in range(len(headers)):
+        pdf.cell(widths[i], 8, headers[i], border=1, align='C', fill=True)
+    pdf.ln()
+
+    pdf.set_font("Arial", '', 7)
+    for _, row in df_input.iterrows():
+        # Clean data dari newline untuk PDF
+        lc = str(row.get('Last Compliance', '')).replace("\n", " ")
+        pdf.cell(widths[0], 7, str(row.get('Registration', '')), border=1, align='C')
+        pdf.cell(widths[1], 7, str(row.get('AD Number', '')), border=1, align='C')
+        pdf.cell(widths[2], 7, str(row.get('Subject', ''))[:45], border=1)
+        pdf.cell(widths[3], 7, str(row.get('Type', '')), border=1, align='C')
+        pdf.cell(widths[4], 7, lc, border=1, align='C')
+        pdf.cell(widths[5], 7, str(row.get('Next Due (FH)', '')), border=1, align='C')
+        pdf.cell(widths[6], 7, str(row.get('Next Due (Date)', '')), border=1, align='C')
+        pdf.cell(widths[7], 7, str(row.get('Rem FH', '')), border=1, align='C')
+        pdf.cell(widths[8], 7, str(row.get('Status', '')), border=1, align='C')
+        pdf.ln()
+    return pdf.output(dest='S').encode('latin-1')
 
 def get_utilization_data():
-    """Fungsi helper untuk menghitung Current TSN/CSN secara realtime"""
     conn = create_connection()
     query = """
     SELECT 
-        c.ac_reg AS [Registration], 
-        c.ac_type AS [Type],
-        c.tsn AS [Start TSN],
-        c.csn AS [Start CSN],
+        c.ac_reg AS [Registration], c.ac_type AS [Type],
+        c.tsn AS [Start TSN], c.csn AS [Start CSN],
         IFNULL(SUM(a.flight_hours), 0) AS [Accumulated FH],
         IFNULL(SUM(a.landings), 0) AS [Accumulated FC],
         (c.tsn + IFNULL(SUM(a.flight_hours), 0)) AS [Current TSN],
-        (c.csn + IFNULL(SUM(a.landings), 0)) AS [Current CSN],
-        MAX(a.date) AS [Last Flight]
+        (c.csn + IFNULL(SUM(a.landings), 0)) AS [Current CSN]
     FROM catalog c
     LEFT JOIN aml_utilization a ON c.ac_reg = a.ac_reg
     GROUP BY c.ac_reg
@@ -27,80 +63,58 @@ def get_utilization_data():
     return df
 
 def get_detailed_history(ac_reg, start_date, end_date):
-    """Mengambil riwayat detail pergerakan pesawat dari aml_utilization"""
-    conn = create_connection()
-    query = f"""
-    SELECT 
-        aml_no AS [AML NO],
-        date AS [Date],
-        flight_hours AS [FH],
-        landings AS [FC],
-        ac_tsn AS [TSN],
-        ac_csn AS [CSN]
-    FROM aml_utilization
-    WHERE ac_reg = '{ac_reg}' 
-    AND date BETWEEN '{start_date}' AND '{end_date}'
-    ORDER BY date DESC, aml_no DESC
     """
-    df = pd.read_sql(query, conn)
-    conn.close()
-    return df
-
-def show_ad_status():
-    st.subheader("📋 Airworthiness Directive Status")
-    
+    Mengambil data histori pemakaian pesawat berdasarkan rentang tanggal.
+    Digunakan untuk tabel 'Detailed Utilization History'.
+    """
     conn = create_connection()
-    # Join dengan data utilization terbaru jika ada untuk menghitung remaining
-    query = "SELECT ac_reg, ad_number, subject, last_done_fh, next_due_fh, status FROM airworthiness_directives"
-    df = pd.read_sql(query, conn)
-    conn.close()
-    
-    if not df.empty:
-        # Contoh perhitungan sederhana untuk Remaining (bisa diimprove dengan data FH aktual)
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        
-        # Beri highlight untuk AD yang mendekati Due Date
-        st.warning("⚠️ Perhatian: Terdapat AD yang mendekati limit pengerjaan (Maintenance Forecast).")
-    else:
-        st.info("Belum ada data AD yang terdaftar.")
+    try:
+        query = """
+        SELECT 
+            date AS [Date], 
+            aml_no AS [AML No], 
+            flight_hours AS [FH], 
+            landings AS [FC], 
+            ac_tsn AS [TSN], 
+            ac_csn AS [CSN],
+            departure AS [From],
+            arrival AS [To]
+        FROM aml_utilization
+        WHERE ac_reg = ? AND date BETWEEN ? AND ?
+        ORDER BY date DESC, aml_no DESC
+        """
+        # Menggunakan params untuk keamanan SQL Injection
+        df = pd.read_sql(query, conn, params=(ac_reg, start_date, end_date))
+        return df
+    except Exception as e:
+        st.error(f"Error saat mengambil histori: {e}")
+        return pd.DataFrame()
+    finally:
+        conn.close()
+
+# ==========================================
+# 2. FUNGSI TAMPILAN UTAMA
+# ==========================================
 
 def show(page_name):
-    # --- Tambahkan CSS yang lebih kuat di bagian atas page ---
+    # CSS untuk Tabel AD Status agar ada garis dan rapi
     st.markdown("""
         <style>
-        /* Mengatur seluruh tabel di dalam div compact-table */
-        .compact-table table {
-            font-size: 11px !important;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
-        }
-        /* Mengatur kerapatan baris dan padding sel */
-        .compact-table td, .compact-table th {
-            padding: 2px 4px !important;
-            line-height: 1.1 !important;
-            vertical-align: middle !important;
-        }
-        /* Menghilangkan spasi antar baris di elemen <br> */
-        .compact-table br {
-            content: "";
-            margin: 0;
-            display: block;
-        }
+        .report-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 20px; }
+        .report-table th { background-color: #1a3a5f; color: white; border: 1px solid #ddd; padding: 8px; }
+        .report-table td { border: 1px solid #ddd; padding: 6px; text-align: center; }
+        .status-badge { padding: 2px 8px; border-radius: 4px; font-weight: bold; }
+        .normal { background-color: #d4edda; color: #155724; }
+        .overdue { background-color: #f8d7da; color: #721c24; }
+        .soon { background-color: #fff3cd; color: #856404; }
         </style>
     """, unsafe_allow_html=True)
 
-    conn = create_connection() # Pindahkan koneksi ke sini agar bisa dipakai semua sub-menu
+    conn = create_connection()
 
     try:
-        # PENTING: Ambil data registrasi di luar blok IF agar tersedia untuk semua halaman
-        df_util = get_utilization_data()
-        
-        if df_util.empty:
-            st.warning("Data Aircraft Catalog kosong.")
-            return
+        df_util_global = get_utilization_data()
 
-        # Buat selectbox global di bagian paling atas jika halaman adalah salah satu dari sub-menu maintenance
-        # Atau jika Bapak ingin selectbox hanya muncul di sub-menu tertentu, definisikan ulang di tiap sub-menu.
-        
         # === HALAMAN 1: AIRCRAFT UTILIZATION RECORD ===
         if page_name == "Aircraft Utilization Record":
             st.header("✈️ Aircraft Utilization Record")
@@ -197,120 +211,63 @@ def show(page_name):
                 else:
                     st.warning(f"Tidak ada data penerbangan untuk {selected_reg} pada periode tersebut.")
 
-        # === HALAMAN 2: AIRWORTHINESS DIRECTIVES STATUS ===
+        # --- AD STATUS ---
         elif page_name == "Airworthiness Directive Status":
-            st.header("✈️ Airworthiness Directive Status")
-    
-            conn = create_connection()
-    
-            # 1. Ambil data Utilization terakhir untuk setiap pesawat
-            # Ini untuk menghitung 'Current FH' secara real-time
-            query_util = """
-                SELECT c.ac_reg, c.ac_type, 
-                    (c.tsn + IFNULL(SUM(u.flight_hours), 0)) as current_fh
-                FROM catalog c
-                LEFT JOIN aml_utilization u ON c.ac_reg = u.ac_reg
-                GROUP BY c.ac_reg
-            """
-            df_util = pd.read_sql(query_util, conn)
-
-            # 2. Query Gabungan: Master AD + Compliance Terakhir
-            # Kita ambil pengerjaan TERAKHIR (MAX date_done) untuk setiap AD di setiap pesawat
-            query_status = """
-                SELECT 
-                    m.ad_number, m.ac_type, m.subject, m.compliance_type, 
-                    m.interval_fh, m.interval_days,
-                    c.ac_reg, c.date_done, c.fh_done, c.remarks
+            st.header("📋 Airworthiness Directive Status")
+            
+            query_ad = """
+                SELECT m.ad_number, m.ac_type, m.subject, m.compliance_type, 
+                       m.interval_fh, m.interval_days, c.ac_reg, c.date_done, c.fh_done
                 FROM ad_catalog m
                 LEFT JOIN ad_compliance c ON m.ad_number = c.ad_number
-                WHERE c.comp_id = (
-                    SELECT MAX(comp_id) 
-                    FROM ad_compliance 
-                    WHERE ad_number = m.ad_number AND ac_reg = c.ac_reg
-                ) OR c.comp_id IS NULL
+                WHERE c.comp_id = (SELECT MAX(comp_id) FROM ad_compliance WHERE ad_number = m.ad_number AND ac_reg = c.ac_reg)
+                OR c.comp_id IS NULL
             """
-            df_ad = pd.read_sql(query_status, conn)
-    
+            df_ad = pd.read_sql(query_ad, conn)
+
             if not df_ad.empty:
-                status_data = []
-                today = datetime.now().date()
-
+                status_list = []
+                # Membangun tabel HTML secara manual agar garis muncul
+                html_table = '<table class="report-table"><thead><tr><th>Reg</th><th>AD Number</th><th>Subject</th><th>Type</th><th>Last Compliance</th><th>Next FH</th><th>Status</th></tr></thead><tbody>'
+                
                 for _, row in df_ad.iterrows():
-                    # Cari jam terbang pesawat saat ini dari df_util
-                    ac_info = df_util[df_util['ac_reg'] == row['ac_reg']]
-                    curr_fh = ac_info['current_fh'].values[0] if not ac_info.empty else 0
+                    ac_info = df_util_global[df_util_global['Registration'] == row['ac_reg']]
+                    curr_fh = ac_info['Current TSN'].values[0] if not ac_info.empty else 0
+                    
+                    due_fh = row['fh_done'] + row['interval_fh'] if row['date_done'] and row['interval_fh'] > 0 else "-"
+                    rem_fh = round(due_fh - curr_fh, 2) if isinstance(due_fh, (int, float)) else "-"
+                    
+                    st_label = "NORMAL"
+                    badge_class = "normal"
+                    if isinstance(rem_fh, (int, float)):
+                        if rem_fh <= 0: 
+                            st_label = "OVERDUE"; badge_class = "overdue"
+                        elif rem_fh < 50: 
+                            st_label = "DUE SOON"; badge_class = "soon"
 
-                    # --- LOGIKA KALKULASI DUE ---
-                    due_fh = "-"
-                    due_date = "-"
-                    rem_fh = "-"
-                    rem_days = "-"
-                    status_label = "⚪ NO DATA"
-
-                    if row['date_done']: # Jika sudah pernah dikerjakan
-                        last_date = datetime.strptime(row['date_done'], '%Y-%m-%d').date()
-                
-                        # A. Kalkulasi berdasarkan Hours (FH)
-                        if row['interval_fh'] > 0:
-                            due_fh = row['fh_done'] + row['interval_fh']
-                            rem_fh = round(due_fh - curr_fh, 2)
-                
-                        # B. Kalkulasi berdasarkan Calendar (Days)
-                        if row['interval_days'] > 0:
-                            due_date = last_date + timedelta(days=row['interval_days'])
-                            rem_days = (due_date - today).days
-
-                        # C. Penentuan Status Warna
-                        if (isinstance(rem_fh, float) and rem_fh <= 0) or (isinstance(rem_days, int) and rem_days <= 0):
-                            status_label = "🔴 OVERDUE"
-                        elif (isinstance(rem_fh, float) and rem_fh < 50) or (isinstance(rem_days, int) and rem_days < 30):
-                            status_label = "🟡 DUE SOON"
-                        else:
-                            status_label = "🟢 NORMAL"
-            
-                    if row['compliance_type'] == "One-time" and row['date_done']:
-                        status_label = "🔵 COMPLIED"
-
-                    status_data.append({
-                        "Registration": row['ac_reg'] if row['ac_reg'] else "N/A",
-                        "AD Number": row['ad_number'],
-                        "Subject": row['subject'],
-                        "Type": row['compliance_type'],
-                        "Last Compliance": f"{row['date_done']}\n({row['fh_done']} FH)",
-                        "Next Due (FH)": due_fh,
-                        "Next Due (Date)": due_date,
-                        "Rem FH": rem_fh,
-                        "Rem Days": rem_days,
-                        "Status": status_label
+                    # Data untuk Export
+                    status_list.append({
+                        "Registration": row['ac_reg'], "AD Number": row['ad_number'], "Subject": row['subject'],
+                        "Type": row['compliance_type'], "Last Compliance": f"{row['date_done']} ({row['fh_done']})",
+                        "Next Due (FH)": due_fh, "Rem FH": rem_fh, "Status": st_label
                     })
 
-                df_final = pd.DataFrame(status_data)
-
-                # --- Tampilan Tabel ---
-                st.dataframe(
-                    df_final,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Status": st.column_config.TextColumn("Status", help="Green: OK, Yellow: <50h/30d, Red: Overdue"),
-                        "Last Compliance": st.column_config.TextColumn("Last Compliance", width="medium"),
-                    }
-                )
-        
-                # Tombol Export
-                st.divider()
-                st.download_button("📊 Download AD Status Report", df_final.to_csv(index=False), "AD_Status_Report.csv", "text/csv")
-
-            else:
-                st.info("Belum ada data AD Compliance yang tercatat.")
-
-            conn.close()
-
-        # === HALAMAN 3: SERVICE BULLETIN STATUS ===
-        elif page_name == "Service Bulletin Status":
-            st.header("✈️ Service Bulletin Status")
-            st.info("Modul Monitoring SB sedang dikembangkan.")
-
+                    # Row HTML
+                    html_table += f"<tr><td>{row['ac_reg']}</td><td>{row['ad_number']}</td><td style='text-align:left'>{row['subject']}</td><td>{row['compliance_type']}</td><td>{row['date_done']} ({row['fh_done']})</td><td>{due_fh}</td><td><span class='status-badge {badge_class}'>{st_label}</span></td></tr>"
+                
+                html_table += "</tbody></table>"
+                st.markdown(html_table, unsafe_allow_html=True)
+                
+                df_final = pd.DataFrame(status_list)
+                
+                # Tombol Download
+                c1, c2 = st.columns(2)
+                with c1:
+                    pdf_data = generate_pdf_report(df_final)
+                    st.download_button("📕 Download PDF Report", pdf_data, "AD_Report.pdf", "application/pdf")
+                with c2:
+                    csv = df_final.to_csv(index=False).encode('utf-8')
+                    st.download_button("📊 Download CSV Report", csv, "AD_Report.csv", "text/csv")
 
 # === HALAMAN 4: COMPONENT STATUS ===
         elif page_name == "Component Status":
@@ -456,5 +413,3 @@ def show(page_name):
 
     except Exception as e:
         st.error(f"Error pada halaman {page_name}: {e}")
-    finally:
-        conn.close()
