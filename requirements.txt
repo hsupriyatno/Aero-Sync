@@ -4,5 +4,5 @@ xlsxwriter
 openpyxl
 streamlit-option-menu
 fpdf2
-pip install fpdf
+install fpdf
 fpdf
