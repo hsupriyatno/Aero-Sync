@@ -218,11 +218,14 @@ def show(page_name):
                 # Membangun tabel HTML secara manual agar garis muncul
                 html_table = '<table class="report-table"><thead><tr><th>Reg</th><th>AD Number</th><th>Subject</th><th>Type</th><th>Last Compliance</th><th>Next FH</th><th>Status</th></tr></thead><tbody>'
                
+# --- MULAI PERULANGAN DATA AD ---
                 for _, row in df_ad.iterrows():
                     ac_info = df_util_global[df_util_global['Registration'] == row['ac_reg']]
                     curr_fh = ac_info['Current TSN'].values[0] if not ac_info.empty else 0
+                    
                     due_fh = row['fh_done'] + row['interval_fh'] if row['date_done'] and row['interval_fh'] > 0 else "-"
                     rem_fh = round(due_fh - curr_fh, 2) if isinstance(due_fh, (int, float)) else "-"
+                    
                     st_label = "NORMAL"
                     badge_class = "normal"
                     if isinstance(rem_fh, (int, float)):
@@ -231,33 +234,28 @@ def show(page_name):
                         elif rem_fh < 50:
                             st_label = "DUE SOON"; badge_class = "soon"
 
+                    # --- PERBAIKAN UTAMA: Hindari f-string untuk data variabel ---
+                    txt_date = str(row['date_done'])
+                    txt_fh = str(row['fh_done'])
+                    # Pakai penggabungan string manual (+) agar aman 100% dari backslash error
+                    lc_display = txt_date + " (" + txt_fh + " FH)"
+
                     # Data untuk Export
                     status_list.append({
-                    
                         "Registration": row['ac_reg'], "AD Number": row['ad_number'], "Subject": row['subject'],
-                        "Type": row['compliance_type'], "Last Compliance": f"{row['date_done']} ({row['fh_done']})",
+                        "Type": row['compliance_type'], "Last Compliance": lc_display,
                         "Next Due (FH)": due_fh, "Rem FH": rem_fh, "Status": st_label
                     })
 
-                    # --- BAGIAN PEMBUAT BARIS TABEL (RAPID) ---
-                    # 1. Rakit teks Last Compliance manual (Anti-Backslash Error)
-                    txt_date = str(row['date_done'])
-                    txt_fh = str(row['fh_done'])
-                    lc_display = txt_date + " (" + txt_fh + " FH)" 
-
-                    # 2. Masukkan ke HTML Table (Gunakan .format agar aman)
-                    html_table += "<tr><td>{}</td><td>{}</td><td style='text-align:left'>{}</td><td>{}</td><td>{}</td><td>{}</td><td><span class='status-badge {}'>{}</span></td></tr>".format(
-                        row['ac_reg'], 
-                        row['ad_number'], 
-                        row['subject'], 
-                        row['compliance_type'], 
-                        lc_display, 
-                        due_fh, 
-                        badge_class, 
-                        st_label
+                    # Gunakan .format() untuk merakit baris HTML tabel
+                    # Cara ini jauh lebih stabil di server Streamlit Bapak
+                    html_row = "<tr><td>{}</td><td>{}</td><td style='text-align:left'>{}</td><td>{}</td><td>{}</td><td>{}</td><td><span class='status-badge {}'>{}</span></td></tr>".format(
+                        row['ac_reg'], row['ad_number'], row['subject'], row['compliance_type'], 
+                        lc_display, due_fh, badge_class, st_label
                     )
-
-                # --- TUTUP TABEL (Pastikan indentasi sejajar dengan 'for') ---
+                    html_table += html_row
+                
+                # --- PENUTUP TABEL (DI LUAR LOOP) ---
                 html_table += "</tbody></table>"
                 st.markdown(html_table, unsafe_allow_html=True)
                 df_final = pd.DataFrame(status_list)
