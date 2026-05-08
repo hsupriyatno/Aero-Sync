@@ -256,7 +256,12 @@ def show(page_name):
                     html_table += html_row
                 
                 # --- PENUTUP TABEL (DI LUAR LOOP) ---
-                html_table += "</tbody></table>"
+                # 1. Olah dulu teksnya di variabel terpisah (Aman dari Backslash)
+                lc_raw = str(row.get('Last Compliance', ''))
+                lc_clean = lc_raw.replace('\n', '<br>') 
+
+                # 2. Baru panggil variabelnya di dalam f-string
+                html_table += f"<td>{lc_clean}</td>"
                 st.markdown(html_table, unsafe_allow_html=True)
                 df_final = pd.DataFrame(status_list)
 
