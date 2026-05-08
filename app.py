@@ -3,7 +3,7 @@ from database import init_db
 import views.dashboard as dashboard
 import views.catalog as catalog
 import views.maintenance_entry as maintenance_entry
-import views.maintenance_status as maintenance_status
+#import views.maintenance_status as maintenance_status
 import views.material_planning as material_planning
 import views.engineering as engineering
 import views.inventory as inventory
