@@ -233,7 +233,7 @@ def show(page_name):
 
                     # Data untuk Export
                     status_list.append({
-                    st.write("TEST")
+                    
                         "Registration": row['ac_reg'], "AD Number": row['ad_number'], "Subject": row['subject'],
                         "Type": row['compliance_type'], "Last Compliance": f"{row['date_done']} ({row['fh_done']})",
                         "Next Due (FH)": due_fh, "Rem FH": rem_fh, "Status": st_label
