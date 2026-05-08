@@ -203,6 +203,7 @@ def show(page_name):
         # --- AD STATUS ---
         elif page_name == "Airworthiness Directive Status":
             st.header("📋 Airworthiness Directive Status")
+            
             query_ad = """
                 SELECT m.ad_number, m.ac_type, m.subject, m.compliance_type,
                        m.interval_fh, m.interval_days, c.ac_reg, c.date_done, c.fh_done
@@ -215,14 +216,17 @@ def show(page_name):
 
             if not df_ad.empty:
                 status_list = []
-                # Membangun tabel HTML secara manual agar garis muncul
+                # Membangun tabel HTML
                 html_table = '<table class="report-table"><thead><tr><th>Reg</th><th>AD Number</th><th>Subject</th><th>Type</th><th>Last Compliance</th><th>Next FH</th><th>Status</th></tr></thead><tbody>'
-               
+                
                 for _, row in df_ad.iterrows():
+                    # Ambil Current TSN dari df_util_global
                     ac_info = df_util_global[df_util_global['Registration'] == row['ac_reg']]
                     curr_fh = ac_info['Current TSN'].values[0] if not ac_info.empty else 0
+                    
                     due_fh = row['fh_done'] + row['interval_fh'] if row['date_done'] and row['interval_fh'] > 0 else "-"
                     rem_fh = round(due_fh - curr_fh, 2) if isinstance(due_fh, (int, float)) else "-"
+                    
                     st_label = "NORMAL"
                     badge_class = "normal"
                     if isinstance(rem_fh, (int, float)):
@@ -231,30 +235,42 @@ def show(page_name):
                         elif rem_fh < 50:
                             st_label = "DUE SOON"; badge_class = "soon"
 
+                    # --- PERBAIKAN: Definisikan teks compliance dulu agar aman dari error backslash ---
+                    txt_date = str(row['date_done'])
+                    txt_fh = str(row['fh_done'])
+                    clean_lc = txt_date + " (" + txt_fh + " FH)"
+
                     # Data untuk Export
                     status_list.append({
-
-                        "Registration": row['ac_reg'], "AD Number": row['ad_number'], "Subject": row['subject'],
-                        "Type": row['compliance_type'], "Last Compliance": f"{row['date_done']} ({row['fh_done']})",
-                        "Next Due (FH)": due_fh, "Rem FH": rem_fh, "Status": st_label
+                        "Registration": row['ac_reg'], 
+                        "AD Number": row['ad_number'], 
+                        "Subject": row['subject'],
+                        "Type": row['compliance_type'], 
+                        "Last Compliance": clean_lc,
+                        "Next Due (FH)": due_fh, 
+                        "Rem FH": rem_fh, 
+                        "Status": st_label
                     })
 
-                    # Row HTML
-                    html_table += f"<tr><td>{row['ac_reg']}</td><td>{row['ad_number']}</td><td style='text-align:left'>{row['subject']}</td><td>{row['compliance_type']}</td><td>{row['date_done']} ({row['fh_done']})</td><td>{due_fh}</td><td><span class='status-badge {badge_class}'>{st_label}</span></td></tr>"
+                    # Tambah Baris ke HTML
+                    html_table += f"<tr><td>{row['ac_reg']}</td><td>{row['ad_number']}</td><td style='text-align:left'>{row['subject']}</td><td>{row['compliance_type']}</td><td>{clean_lc}</td><td>{due_fh}</td><td><span class='status-badge {badge_class}'>{st_label}</span></td></tr>"
+                
                 html_table += "</tbody></table>"
                 st.markdown(html_table, unsafe_allow_html=True)
+                
                 df_final = pd.DataFrame(status_list)
 
                 # Tombol Download
+                st.divider()
                 c1, c2 = st.columns(2)
                 with c1:
                     pdf_data = generate_pdf_report(df_final)
-                    st.download_button("📕 Download PDF Report", pdf_data, "AD_Report.pdf", "application/pdf")
+                    st.download_button("📕 Download PDF Report", pdf_data, "AD_Report.pdf", "application/pdf", use_container_width=True)
                 with c2:
                     csv = df_final.to_csv(index=False).encode('utf-8')
-                    st.download_button("📊 Download CSV Report", csv, "AD_Report.csv", "text/csv")
-
-
+                    st.download_button("📊 Download CSV Report", csv, "AD_Report.csv", "text/csv", use_container_width=True)
+            else:
+                st.info("Belum ada data AD Compliance.")
 
 # === HALAMAN 4: COMPONENT STATUS ===
         elif page_name == "Component Status":
