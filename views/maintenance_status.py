@@ -261,7 +261,7 @@ def show(page_name):
                 df_final = pd.DataFrame(status_list)
 
                 # Tombol Download
-                c1, c2 = st.columns(2)
+                c1 = st.columns(1)
                 with c1:
                     # Ambil output string dari fungsi
                     pdf_output = generate_pdf_report(df_final)
