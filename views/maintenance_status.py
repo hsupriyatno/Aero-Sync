@@ -275,10 +275,6 @@ def show(page_name):
                         file_name="AD_Report.pdf",
                         mime="application/pdf"
                     )
-                with c2:
-                    csv = df_final.to_csv(index=False).encode('utf-8')
-                    st.download_button("📊 Download CSV Report", csv, "AD_Report.csv", "text/csv")
-
 
 
 # === HALAMAN 4: COMPONENT STATUS ===
