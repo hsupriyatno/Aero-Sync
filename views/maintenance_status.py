@@ -256,7 +256,7 @@ def show(page_name):
                         badge_class, 
                         st_label
                     )
-                    )
+                    
                 html_table += "</tbody></table>"
                 st.markdown(html_table, unsafe_allow_html=True)
                 df_final = pd.DataFrame(status_list)
