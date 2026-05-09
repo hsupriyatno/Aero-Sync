@@ -16,7 +16,7 @@ from views import catalog, structure  # Import file baru
 
 # 1. Konfigurasi Halaman
 st.set_page_config(
-    page_title="AERO-SYNCH ERP",
+    page_title="AIRFAST MAINTENANCE APPLICATION",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -55,7 +55,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.image("LOGO.png", width=300)
+st.image("LOGO.png", width=250)
 
 # 4. LOGIKA NAVIGASI
 if 'page' not in st.session_state:
