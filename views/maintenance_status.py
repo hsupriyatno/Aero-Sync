@@ -210,6 +210,10 @@ def show(page_name):
         # --- AD STATUS ---
         elif page_name == "Airworthiness Directive Status":
             st.header("📋 Airworthiness Directive Status")
+            
+            # 1. Pastikan data pendukung sudah ada
+            df_util_global = get_utilization_data()
+            
             query_ad = """
                 SELECT m.ad_number, m.ac_type, m.subject, m.compliance_type,
                        m.interval_fh, m.interval_days, c.ac_reg, c.date_done, c.fh_done
@@ -222,81 +226,52 @@ def show(page_name):
 
             if not df_ad.empty:
                 status_list = []
-                # Membangun tabel HTML secara manual agar garis muncul
                 html_table = '<table class="report-table"><thead><tr><th>Reg</th><th>AD Number</th><th>Subject</th><th>Type</th><th>Last Compliance</th><th>Next FH</th><th>Status</th></tr></thead><tbody>'
-               
-                    # --- MULAI PERULANGAN DATA AD ---
-                    # --- MULAI PERULANGAN DATA AD ---
-                    for _, row in df_ad.iterrows():
-                        ac_info = df_util_global[df_util_global['Registration'] == row['ac_reg']]
-                        curr_fh = ac_info['Current TSN'].values[0] if not ac_info.empty else 0
+                
+                for _, row in df_ad.iterrows():
+                    ac_info = df_util_global[df_util_global['Registration'] == row['ac_reg']]
+                    curr_fh = ac_info['Current TSN'].values[0] if not ac_info.empty else 0
                     
-                        due_fh = row['fh_done'] + row['interval_fh'] if row['date_done'] and row['interval_fh'] > 0 else "-"
-                        rem_fh = round(due_fh - curr_fh, 2) if isinstance(due_fh, (int, float)) else "-"
+                    due_fh = row['fh_done'] + row['interval_fh'] if row['date_done'] and row['interval_fh'] > 0 else "-"
+                    rem_fh = round(due_fh - curr_fh, 2) if isinstance(due_fh, (int, float)) else "-"
                     
-                        st_label = "NORMAL"
-                        badge_class = "normal"
-                        if isinstance(rem_fh, (int, float)):
-                            if rem_fh <= 0:
-                                st_label = "OVERDUE"; badge_class = "overdue"
-                            elif rem_fh < 50:
-                                st_label = "DUE SOON"; badge_class = "soon"
+                    st_label = "NORMAL"; badge_class = "normal"
+                    if isinstance(rem_fh, (int, float)):
+                        if rem_fh <= 0:
+                            st_label = "OVERDUE"; badge_class = "overdue"
+                        elif rem_fh < 50:
+                            st_label = "DUE SOON"; badge_class = "soon"
 
-                        # 1. Olah teks Last Compliance (lc_clean) di luar f-string agar aman
-                        lc_raw = str(row.get('date_done', '')) + " (" + str(row.get('fh_done', '')) + " FH)"
-                        lc_clean = lc_raw.replace('\n', '<br>') 
+                    # PEMBERSIHAN BACKSLASH: Rakit teks di luar f-string
+                    lc_display = str(row.get('date_done', '')) + " (" + str(row.get('fh_done', '')) + " FH)"
+                    # Jika ada newline, ganti secara manual TANPA masuk ke {}
+                    lc_clean = lc_display.replace('\n', '<br>') 
 
-                        # 2. Masukkan ke list untuk export
-                        status_list.append({
-                            "Registration": row['ac_reg'], 
-                            "AD Number": row['ad_number'], 
-                            "Subject": row['subject'],
-                            "Type": row['compliance_type'], 
-                            "Last Compliance": lc_clean,
-                            "Next Due (FH)": due_fh, 
-                            "Rem FH": rem_fh, 
-                            "Status": st_label
-                        })
+                    status_list.append({
+                        "Registration": row['ac_reg'], "AD Number": row['ad_number'], "Subject": row['subject'],
+                        "Type": row['compliance_type'], "Last Compliance": lc_clean,
+                        "Next Due (FH)": due_fh, "Rem FH": rem_fh, "Status": st_label
+                    })
 
-                        # 3. Rakit HTML row (Cukup SATU cara saja, pakai f-string yang sudah aman)
-                        html_row = f"""
-                        <tr>
-                            <td>{row['ac_reg']}</td>
-                            <td>{row['ad_number']}</td>
-                            <td style='text-align:left'>{row['subject']}</td>
-                            <td>{row['compliance_type']}</td>
-                            <td>{lc_clean}</td>
-                            <td>{due_fh}</td>
-                            <td><span class='status-badge {badge_class}'>{st_label}</span></td>
-                        </tr>
-                        """
-                        html_table += html_row
+                    # Gunakan .format() untuk amannya, hindari f-string yang kompleks
+                    row_html = "<tr><td>{}</td><td>{}</td><td style='text-align:left'>{}</td><td>{}</td><td>{}</td><td>{}</td><td><span class='status-badge {}'>{}</span></td></tr>".format(
+                        row['ac_reg'], row['ad_number'], row['subject'], row['compliance_type'], 
+                        lc_clean, due_fh, badge_class, st_label
+                    )
+                    html_table += row_html
 
-                    # --- DI LUAR LOOP ---
-                    html_table += "</tbody></table>"
-                    st.markdown(html_table, unsafe_allow_html=True)
-                    df_final = pd.DataFrame(status_list)
+                html_table += "</tbody></table>"
+                st.markdown(html_table, unsafe_allow_html=True)
+                df_final = pd.DataFrame(status_list)
 
-                    # Bagian Download PDF
-                    try:
-                        pdf_str = generate_pdf_report(df_final)
-                        # Jika pdf_str sudah berupa bytes (tergantung versi fpdf), jangan diencode lagi
-                        if isinstance(pdf_str, str):
-                            pdf_bytes = pdf_str.encode('latin-1')
-                        else:
-                            pdf_bytes = pdf_str
-
-                        st.download_button(
-                            label="📕 Download PDF Report",
-                            data=pdf_bytes,
-                            file_name="AD_Report.pdf",
-                            mime="application/pdf"
-                        )
-                except Exception as e:
-                    st.error(f"Gagal generate PDF: {e}")
-                finally:
-                    if 'conn' in locals():
-                    conn.close()
+                # Export PDF
+                pdf_output = generate_pdf_report(df_final)
+                # Cek apakah sudah bytes atau masih string
+                pdf_data = pdf_output if isinstance(pdf_output, bytes) else pdf_output.encode('latin-1')
+                
+                st.download_button("📕 Download PDF", pdf_data, "AD_Report.pdf", "application/pdf")
+            else:
+                st.info("Database AD masih kosong.")
 
 # === HALAMAN 4: COMPONENT STATUS ===
         elif page_name == "Component Status":
