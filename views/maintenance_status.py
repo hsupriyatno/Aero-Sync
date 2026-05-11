@@ -267,11 +267,14 @@ def show(page_name):
                 df_final = pd.DataFrame(status_list)
 
                 # Export PDF
+                st.write("TEST 1")
                 try:
                     pdf_output = generate_pdf_report(df_final)
                     pdf_data = pdf_output if isinstance(pdf_output, bytes) else pdf_output.encode('latin-1')
                     st.download_button("📕 Download PDF Report", pdf_data, "AD_Report.pdf", "application/pdf")
+                    st.write("TEST 2")
                 except Exception as pdf_err:
+                    st.write("TEST 3")
                     st.error(f"Gagal generate PDF: {pdf_err}")
             else:
                 st.info("Database AD kosong.")
