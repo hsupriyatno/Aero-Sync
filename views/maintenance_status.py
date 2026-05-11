@@ -225,77 +225,75 @@ def show(page_name):
                 # Membangun tabel HTML secara manual agar garis muncul
                 html_table = '<table class="report-table"><thead><tr><th>Reg</th><th>AD Number</th><th>Subject</th><th>Type</th><th>Last Compliance</th><th>Next FH</th><th>Status</th></tr></thead><tbody>'
                
-# --- MULAI PERULANGAN DATA AD ---
-                for _, row in df_ad.iterrows():
-                    ac_info = df_util_global[df_util_global['Registration'] == row['ac_reg']]
-                    curr_fh = ac_info['Current TSN'].values[0] if not ac_info.empty else 0
+                    # --- MULAI PERULANGAN DATA AD ---
+                    # --- MULAI PERULANGAN DATA AD ---
+                    for _, row in df_ad.iterrows():
+                        ac_info = df_util_global[df_util_global['Registration'] == row['ac_reg']]
+                        curr_fh = ac_info['Current TSN'].values[0] if not ac_info.empty else 0
                     
-                    due_fh = row['fh_done'] + row['interval_fh'] if row['date_done'] and row['interval_fh'] > 0 else "-"
-                    rem_fh = round(due_fh - curr_fh, 2) if isinstance(due_fh, (int, float)) else "-"
+                        due_fh = row['fh_done'] + row['interval_fh'] if row['date_done'] and row['interval_fh'] > 0 else "-"
+                        rem_fh = round(due_fh - curr_fh, 2) if isinstance(due_fh, (int, float)) else "-"
                     
-                    st_label = "NORMAL"
-                    badge_class = "normal"
-                    if isinstance(rem_fh, (int, float)):
-                        if rem_fh <= 0:
-                            st_label = "OVERDUE"; badge_class = "overdue"
-                        elif rem_fh < 50:
-                            st_label = "DUE SOON"; badge_class = "soon"
+                        st_label = "NORMAL"
+                        badge_class = "normal"
+                        if isinstance(rem_fh, (int, float)):
+                            if rem_fh <= 0:
+                                st_label = "OVERDUE"; badge_class = "overdue"
+                            elif rem_fh < 50:
+                                st_label = "DUE SOON"; badge_class = "soon"
 
-                    # --- PERBAIKAN UTAMA: Hindari f-string untuk data variabel ---
-                    txt_date = str(row['date_done'])
-                    txt_fh = str(row['fh_done'])
-                    # Pakai penggabungan string manual (+) agar aman 100% dari backslash error
-                    lc_display = txt_date + " (" + txt_fh + " FH)"
+                        # 1. Olah teks Last Compliance (lc_clean) di luar f-string agar aman
+                        lc_raw = str(row.get('date_done', '')) + " (" + str(row.get('fh_done', '')) + " FH)"
+                        lc_clean = lc_raw.replace('\n', '<br>') 
 
-                    # Data untuk Export
-                    status_list.append({
-                        "Registration": row['ac_reg'], "AD Number": row['ad_number'], "Subject": row['subject'],
-                        "Type": row['compliance_type'], "Last Compliance": lc_display,
-                        "Next Due (FH)": due_fh, "Rem FH": rem_fh, "Status": st_label
-                    })
+                        # 2. Masukkan ke list untuk export
+                        status_list.append({
+                            "Registration": row['ac_reg'], 
+                            "AD Number": row['ad_number'], 
+                            "Subject": row['subject'],
+                            "Type": row['compliance_type'], 
+                            "Last Compliance": lc_clean,
+                            "Next Due (FH)": due_fh, 
+                            "Rem FH": rem_fh, 
+                            "Status": st_label
+                        })
 
-                    # Gunakan .format() untuk merakit baris HTML tabel
-                    # Cara ini jauh lebih stabil di server Streamlit Bapak
-                    html_row = "<tr><td>{}</td><td>{}</td><td style='text-align:left'>{}</td><td>{}</td><td>{}</td><td>{}</td><td><span class='status-badge {}'>{}</span></td></tr>".format(
-                        row['ac_reg'], row['ad_number'], row['subject'], row['compliance_type'], 
-                        lc_display, due_fh, badge_class, st_label
-                    )
-                    html_table += html_row
-                
-                # --- PENUTUP TABEL (DI LUAR LOOP) ---
-                # 1. BERSIHKAN TEKS DI LUAR F-STRING (Cara ini 100% aman)
-                lc_raw = str(row.get('date_done', '')) + " (" + str(row.get('fh_done', '')) + ")"
-                lc_clean = lc_raw.replace('\n', '<br>') 
+                        # 3. Rakit HTML row (Cukup SATU cara saja, pakai f-string yang sudah aman)
+                        html_row = f"""
+                        <tr>
+                            <td>{row['ac_reg']}</td>
+                            <td>{row['ad_number']}</td>
+                            <td style='text-align:left'>{row['subject']}</td>
+                            <td>{row['compliance_type']}</td>
+                            <td>{lc_clean}</td>
+                            <td>{due_fh}</td>
+                            <td><span class='status-badge {badge_class}'>{st_label}</span></td>
+                        </tr>
+                        """
+                        html_table += html_row
 
-                # 2. RAKIT HTML MENGGUNAKAN VARIABEL YANG SUDAH BERSIH
-                # Gunakan variabel 'lc_clean' agar tidak ada backslash di dalam { }
-                html_row = f"""
-                <tr>
-                    <td>{row['ac_reg']}</td>
-                    <td>{row['ad_number']}</td>
-                    <td style='text-align:left'>{row['subject']}</td>
-                    <td>{lc_clean}</td>  <td>{due_fh}</td>
-                    <td><span class='status-badge {badge_class}'>{st_label}</span></td>
-                </tr>
-                """
-                html_table += html_row
+                    # --- DI LUAR LOOP ---
+                    html_table += "</tbody></table>"
+                    st.markdown(html_table, unsafe_allow_html=True)
+                    df_final = pd.DataFrame(status_list)
 
-                # Tombol Download
-                # Ambil output string dari fungsi
-                # 1. Ambil output string dari fungsi
-                pdf_str = generate_pdf_report(df_final)
+                    # Bagian Download PDF
+                    try:
+                        pdf_str = generate_pdf_report(df_final)
+                        # Jika pdf_str sudah berupa bytes (tergantung versi fpdf), jangan diencode lagi
+                        if isinstance(pdf_str, str):
+                            pdf_bytes = pdf_str.encode('latin-1')
+                        else:
+                            pdf_bytes = pdf_str
 
-                # 2. Konversi ke Bytes secara manual agar stabil di server
-                # Ini adalah cara paling aman untuk fpdf
-                pdf_bytes = pdf_str.encode('latin-1') 
-
-                st.download_button(
-                    label="📕 Download PDF Report",
-                    data=pdf_bytes,           # Gunakan data yang sudah jadi bytes
-                    file_name="AD_Report.pdf",
-                    mime="application/pdf"
-                )
-
+                        st.download_button(
+                            label="📕 Download PDF Report",
+                            data=pdf_bytes,
+                            file_name="AD_Report.pdf",
+                            mime="application/pdf"
+                        )
+                except Exception as e:
+                    st.error(f"Gagal generate PDF: {e}")
 
 
 # === HALAMAN 4: COMPONENT STATUS ===
