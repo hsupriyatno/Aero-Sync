@@ -294,7 +294,9 @@ def show(page_name):
                         )
                 except Exception as e:
                     st.error(f"Gagal generate PDF: {e}")
-
+                finally:
+                    if 'conn' in locals():
+                    conn.close()
 
 # === HALAMAN 4: COMPONENT STATUS ===
         elif page_name == "Component Status":
