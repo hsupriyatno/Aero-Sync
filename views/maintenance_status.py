@@ -263,14 +263,22 @@ def show(page_name):
                     html_table += html_row
                 
                 # --- PENUTUP TABEL (DI LUAR LOOP) ---
-                # 1. Olah dulu teksnya di variabel terpisah (Aman dari Backslash)
-                lc_raw = str(row.get('Last Compliance', ''))
+                # 1. BERSIHKAN TEKS DI LUAR F-STRING (Cara ini 100% aman)
+                lc_raw = str(row.get('date_done', '')) + " (" + str(row.get('fh_done', '')) + ")"
                 lc_clean = lc_raw.replace('\n', '<br>') 
 
-                # 2. Baru panggil variabelnya di dalam f-string
-                html_table += f"<td>{lc_clean}</td>"
-                st.markdown(html_table, unsafe_allow_html=True)
-                df_final = pd.DataFrame(status_list)
+                # 2. RAKIT HTML MENGGUNAKAN VARIABEL YANG SUDAH BERSIH
+                # Gunakan variabel 'lc_clean' agar tidak ada backslash di dalam { }
+                html_row = f"""
+                <tr>
+                    <td>{row['ac_reg']}</td>
+                    <td>{row['ad_number']}</td>
+                    <td style='text-align:left'>{row['subject']}</td>
+                    <td>{lc_clean}</td>  <td>{due_fh}</td>
+                    <td><span class='status-badge {badge_class}'>{st_label}</span></td>
+                </tr>
+                """
+                html_table += html_row
 
                 # Tombol Download
                 # Ambil output string dari fungsi
