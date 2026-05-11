@@ -41,11 +41,8 @@ def generate_pdf_report(df_input):
         pdf.cell(widths[7], 7, str(row.get('Rem FH', '')), border=1, align='C')
         pdf.cell(widths[8], 7, str(row.get('Status', '')), border=1, align='C')
         pdf.ln()
-    output = pdf.output(dest='S')
-    # Pastikan yang dikembalikan adalah string, bukan bytes di sini
-    if isinstance(output, bytes):
-        return output.decode('latin-1')
-    return output
+    return pdf.output(dest='S') # Langsung 'S' saja, tidak perlu .encode() di sini
+
 def get_utilization_data():
     conn = create_connection()
     query = """
