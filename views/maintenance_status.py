@@ -46,8 +46,7 @@ def generate_pdf_report(df_input):
         output = pdf.output(dest='S')
     
         # Pastikan yang dikembalikan adalah string, bukan bytes di sini
-        if isinstance(output, bytes):
-            return output.decode('latin-1')
+        output = pdf.output(dest='S')
         return output
 
 def get_utilization_data():
@@ -267,17 +266,31 @@ def show(page_name):
                 df_final = pd.DataFrame(status_list)
 
                 # Export PDF
-                st.write("TEST 1")
                 try:
-                    pdf_output = generate_pdf_report(df_final)
-                    pdf_data = pdf_output if isinstance(pdf_output, bytes) else pdf_output.encode('latin-1')
-                    st.download_button("📕 Download PDF Report", pdf_data, "AD_Report.pdf", "application/pdf")
-                    st.write("TEST 2")
-                except Exception as pdf_err:
-                    st.write("TEST 3")
-                    st.error(f"Gagal generate PDF: {pdf_err}")
+                    # 1. Panggil fungsi generator
+                    pdf_raw = generate_pdf_report(df_final)
+
+                    # 2. Logika Universal: Pastikan hasil akhirnya adalah BYTES
+                    if isinstance(pdf_raw, str):
+                        # Jika string (latin-1), konversi ke bytes
+                        pdf_bytes = pdf_raw.encode('latin-1')
+                    elif isinstance(pdf_raw, (bytearray, bytes)):
+                        # Jika sudah bytearray/bytes, langsung pakai
+                        pdf_bytes = bytes(pdf_raw)
+                    else:
+                        pdf_bytes = pdf_raw
+
+                    st.download_button(
+                        label="📕 Download PDF Report",
+                        data=pdf_bytes,
+                        file_name="AD_Status_Report.pdf",
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"Gagal memproses PDF: {e}")
             else:
                 st.info("Database AD kosong.")
+                
 # === HALAMAN 4: COMPONENT STATUS ===
         elif page_name == "Component Status":
             st.header("✈️ Component Status")
