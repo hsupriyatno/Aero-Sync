@@ -275,7 +275,6 @@ def show(page_name):
                     st.error(f"Gagal generate PDF: {pdf_err}")
             else:
                 st.info("Database AD kosong.")
-
 # === HALAMAN 4: COMPONENT STATUS ===
         elif page_name == "Component Status":
             st.header("✈️ Component Status")
