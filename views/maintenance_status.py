@@ -243,9 +243,11 @@ def show(page_name):
                         elif rem_fh < 50:
                             st_label = "DUE SOON"; badge_class = "soon"
 
-                    # --- ANTI-BACKSLASH LOGIC ---
-                    lc_raw = str(row.get('date_done', '')) + " (" + str(row.get('fh_done', '')) + " FH)"
-                    lc_clean = lc_raw.replace('\n', '<br>') 
+                    # --- ANTI-BACKSLASH LOGIC: Olah teks di luar f-string ---
+                    txt_date = str(row.get('date_done', ''))
+                    txt_fh = str(row.get('fh_done', ''))
+                    lc_display = txt_date + " (" + txt_fh + " FH)"
+                    lc_clean = lc_display.replace('\n', '<br>') 
 
                     status_list.append({
                         "Registration": row['ac_reg'], "AD Number": row['ad_number'], "Subject": row['subject'],
@@ -265,9 +267,12 @@ def show(page_name):
                 df_final = pd.DataFrame(status_list)
 
                 # Export PDF
-                pdf_output = generate_pdf_report(df_final)
-                pdf_data = pdf_output if isinstance(pdf_output, bytes) else pdf_output.encode('latin-1')
-                st.download_button("📕 Download PDF Report", pdf_data, "AD_Report.pdf", "application/pdf")
+                try:
+                    pdf_output = generate_pdf_report(df_final)
+                    pdf_data = pdf_output if isinstance(pdf_output, bytes) else pdf_output.encode('latin-1')
+                    st.download_button("📕 Download PDF Report", pdf_data, "AD_Report.pdf", "application/pdf")
+                except Exception as pdf_err:
+                    st.error(f"Gagal generate PDF: {pdf_err}")
             else:
                 st.info("Database AD kosong.")
 
