@@ -274,14 +274,16 @@ def show(page_name):
 
                 # Tombol Download
                 # Ambil output string dari fungsi
-                pdf_output = generate_pdf_report(df_final)
-    
-                # Konversi ke Bytes secara manual di sini agar stabil
-                pdf_bytes = bytes(pdf_output, 'latin-1') 
-    
+                # 1. Ambil output string dari fungsi
+                pdf_str = generate_pdf_report(df_final)
+
+                # 2. Konversi ke Bytes secara manual agar stabil di server
+                # Ini adalah cara paling aman untuk fpdf
+                pdf_bytes = pdf_str.encode('latin-1') 
+
                 st.download_button(
                     label="📕 Download PDF Report",
-                    data=pdf_bytes, # Masukkan data yang sudah jadi bytes
+                    data=pdf_bytes,           # Gunakan data yang sudah jadi bytes
                     file_name="AD_Report.pdf",
                     mime="application/pdf"
                 )
@@ -429,6 +431,10 @@ def show(page_name):
                 st.components.v1.html(styled_table, height=500, scrolling=True)
             else:
                 st.info("Belum ada data komponen.")
+
+
+
+
 
     except Exception as e:
         st.error(f"Error pada halaman {page_name}: {e}")
