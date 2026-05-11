@@ -207,11 +207,11 @@ def show(page_name):
                 else:
                     st.warning(f"Tidak ada data penerbangan untuk {selected_reg} pada periode tersebut.")
 
-        # --- AD STATUS ---
+# --- AD STATUS ---
         elif page_name == "Airworthiness Directive Status":
             st.header("📋 Airworthiness Directive Status")
             
-            # 1. Pastikan data pendukung sudah ada
+            # Ambil data utilitas untuk hitung remaining
             df_util_global = get_utilization_data()
             
             query_ad = """
@@ -226,6 +226,7 @@ def show(page_name):
 
             if not df_ad.empty:
                 status_list = []
+                # Mulai rakit tabel
                 html_table = '<table class="report-table"><thead><tr><th>Reg</th><th>AD Number</th><th>Subject</th><th>Type</th><th>Last Compliance</th><th>Next FH</th><th>Status</th></tr></thead><tbody>'
                 
                 for _, row in df_ad.iterrows():
@@ -242,10 +243,9 @@ def show(page_name):
                         elif rem_fh < 50:
                             st_label = "DUE SOON"; badge_class = "soon"
 
-                    # PEMBERSIHAN BACKSLASH: Rakit teks di luar f-string
-                    lc_display = str(row.get('date_done', '')) + " (" + str(row.get('fh_done', '')) + " FH)"
-                    # Jika ada newline, ganti secara manual TANPA masuk ke {}
-                    lc_clean = lc_display.replace('\n', '<br>') 
+                    # --- ANTI-BACKSLASH LOGIC ---
+                    lc_raw = str(row.get('date_done', '')) + " (" + str(row.get('fh_done', '')) + " FH)"
+                    lc_clean = lc_raw.replace('\n', '<br>') 
 
                     status_list.append({
                         "Registration": row['ac_reg'], "AD Number": row['ad_number'], "Subject": row['subject'],
@@ -253,7 +253,7 @@ def show(page_name):
                         "Next Due (FH)": due_fh, "Rem FH": rem_fh, "Status": st_label
                     })
 
-                    # Gunakan .format() untuk amannya, hindari f-string yang kompleks
+                    # Gunakan .format() untuk amannya, hindari f-string di dalam loop
                     row_html = "<tr><td>{}</td><td>{}</td><td style='text-align:left'>{}</td><td>{}</td><td>{}</td><td>{}</td><td><span class='status-badge {}'>{}</span></td></tr>".format(
                         row['ac_reg'], row['ad_number'], row['subject'], row['compliance_type'], 
                         lc_clean, due_fh, badge_class, st_label
@@ -266,12 +266,10 @@ def show(page_name):
 
                 # Export PDF
                 pdf_output = generate_pdf_report(df_final)
-                # Cek apakah sudah bytes atau masih string
                 pdf_data = pdf_output if isinstance(pdf_output, bytes) else pdf_output.encode('latin-1')
-                
-                st.download_button("📕 Download PDF", pdf_data, "AD_Report.pdf", "application/pdf")
+                st.download_button("📕 Download PDF Report", pdf_data, "AD_Report.pdf", "application/pdf")
             else:
-                st.info("Database AD masih kosong.")
+                st.info("Database AD kosong.")
 
 # === HALAMAN 4: COMPONENT STATUS ===
         elif page_name == "Component Status":
