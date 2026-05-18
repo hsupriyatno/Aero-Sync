@@ -322,11 +322,39 @@ def init_db():
             status TEXT DEFAULT 'Active'
         )
     """)
-    # Tabel AD Compliance (Histori Pengerjaan)
+    # 21. Tabel AD Compliance (Histori Pengerjaan)
     curr.execute("""
         CREATE TABLE IF NOT EXISTS ad_compliance (
             comp_id INTEGER PRIMARY KEY AUTOINCREMENT,
             ad_number TEXT,
+            ac_type TEXT,
+            ac_reg TEXT,
+            date_done DATE,
+            fh_done INTEGER,
+            remarks TEXT
+        )
+    """)
+
+    # 22. Tabel SB Catalog dan Compliance
+    curr.execute("""
+        CREATE TABLE IF NOT EXISTS sb_catalog (
+            sb_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            ac_type TEXT,
+            sb_number TEXT,
+            subject TEXT,
+            compliance_type TEXT,
+            threshold_fh INTEGER DEFAULT 0,
+            interval_fh INTEGER DEFAULT 0,
+            interval_days INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'Active'
+        )
+    """)
+    # 23. Tabel SB Compliance (Histori Pengerjaan)
+    curr.execute("""
+        CREATE TABLE IF NOT EXISTS sb_compliance (
+            comp_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sb_number TEXT,
             ac_type TEXT,
             ac_reg TEXT,
             date_done DATE,
