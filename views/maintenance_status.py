@@ -433,10 +433,6 @@ def show(page_name):
             else:
                 st.info("Belum ada data komponen.")
 
-
-
-
-
     except Exception as e:
         st.error(f"Error pada halaman {page_name}: {e}")
     finally:

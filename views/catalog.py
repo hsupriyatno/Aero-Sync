@@ -304,10 +304,70 @@ def show(page_name):
 
             conn.close()
 
-# === HALAMAN 4: SERVICE BULLETINS CATALOG ===
+        # === HALAMAN 4: SERVICE BULLETINS CATALOG ===
         elif page_name == "Service Bulletins Catalog":
-            st.header("🛠️ Service Bulletins Catalog")
-            st.info("Master data untuk Service Bulletins individual.")
+            st.header("📋 Service Bulletins Catalog")
+            st.info("Daftarkan Master SB berdasarkan Tipe Pesawat di sini.")
+
+            conn = create_connection()
+            curr = conn.cursor()
+
+            # --- 1. Form Entry ---
+            with st.expander("➕ Register New SB Master", expanded=True):
+                # Ambil list tipe pesawat dari catalog
+                df_types = pd.read_sql_query("SELECT DISTINCT ac_type FROM catalog", conn)
+                type_list = df_types['ac_type'].tolist() if not df_types.empty else ["DHC6-300", "Bell 412", "B737-8 MAX"]
+
+                with st.form("form_sb_master", clear_on_submit=True):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        ac_type = st.selectbox("Aircraft Type", type_list)
+                        sb_num = st.text_input("SB Number", placeholder="e.g., SB 2026-XX-XX")
+                        subject = st.text_area("Subject Description")
+            
+                    with col2:
+                        comp_type = st.radio("Compliance Type", ["One-time", "Repetitive"])
+                        interval_fh = st.number_input("Interval (Flight Hours)", min_value=0, step=100)
+                        interval_days = st.number_input("Interval (Days)", min_value=0, step=1, help="Misal: 365 untuk 1 tahun")
+
+                    if st.form_submit_button("Register New SB"):
+                        if sb_num:
+                            curr.execute("""
+                                INSERT INTO sb_catalog (ac_type, sb_number, subject, compliance_type, interval_fh, interval_days)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            """, (ac_type, sb_num, subject, comp_type, interval_fh, interval_days))
+                            conn.commit()
+                            st.success(f"✅ SB {sb_num} untuk {ac_type} berhasil disimpan!")
+                            st.rerun()
+                        else:
+                            st.error("SB Number tidak boleh kosong!")
+
+            # --- 2. Live Data View (Daftar yang sudah terdaftar) ---
+            st.divider()
+            st.subheader("📜 Registered SB Catalog")
+    
+            df_sb_list = pd.read_sql_query("SELECT * FROM sb_catalog ORDER BY sb_id DESC", conn)
+    
+            if not df_sb_list.empty:
+                # Menampilkan tabel dengan kolom yang rapi
+                st.dataframe(
+                    df_sb_list[['ac_type', 'sb_number', 'subject', 'compliance_type', 'interval_fh', 'interval_days']],
+                    use_container_width=True,
+                    hide_index=True
+                )
+        
+                # Fitur Hapus (Opsional untuk memudahkan Bapak jika ada salah input)
+                with st.expander("🗑️ Delete SB from Catalog"):
+                    sb_to_del = st.selectbox("Pilih SB untuk dihapus", df_sb_list['sb_number'].tolist())
+                    if st.button("Confirm Delete"):
+                        curr.execute("DELETE FROM sb_catalog WHERE sb_number = ?", (sb_to_del,))
+                        conn.commit()
+                        st.warning(f"SB {sb_to_del} telah dihapus dari catalog.")
+                        st.rerun()
+            else:
+                st.info("Belum ada SB yang terdaftar di catalog.")
+
+            conn.close()
 
     except Exception as e:
         st.error(f"Error pada halaman {page_name}: {e}")

@@ -384,6 +384,57 @@ def show(page_name):
     
         conn.close()
 
+    elif page_name == "SB Compliance Entry":
+        st.subheader("🔍 Service Bulletin (SB) Compliance Entry")
+    
+        conn = create_connection()
+        # 1. Pastikan query mengambil 'ac_type' sesuai perubahan terakhir Bapak
+        df_sb = pd.read_sql_query("SELECT sb_number, ac_type FROM sb_catalog WHERE status = 'Active'", conn)
+    
+        if not df_sb.empty:
+            # Pindahkan Form ke sini agar rapi
+            with st.form("form_compliance"):
+                selected_sb = st.selectbox("Select SB Number", df_sb['sb_number'].tolist())
+            
+                # 2. Perbaikan KeyError: Gunakan 'ac_type' bukan 'ac_reg'
+                # Kita cari ac_type dari baris yang dipilih
+                mask = df_sb['sb_number'] == selected_sb
+                a_type = df_sb[mask]['ac_type'].values[0]
+            
+                st.info(f"Target Aircraft Type: {a_type}")
+            
+                # 3. Pilih Registrasi Pesawat yang sesuai dengan Tipe tersebut
+                df_fleet = pd.read_sql_query("SELECT ac_reg FROM catalog WHERE ac_type = ?", conn, params=(a_type,))
+                list_reg = df_fleet['ac_reg'].tolist() if not df_fleet.empty else []
+            
+                selected_reg = st.selectbox("Select Aircraft Registration", list_reg)
+            
+                col1, col2 = st.columns(2)
+                date_done = col1.date_input("Date Performed")
+                fh_done = col2.number_input("Compliance FH", min_value=0.0, step=0.1)
+                remarks = st.text_input("Maintenance Release / Form Number", placeholder="e.g., CRS-2026-001")
+            
+                # 4. WAJIB: Tambahkan tombol Submit di dalam blok 'with st.form'
+                submitted = st.form_submit_button("Update Compliance")
+            
+                if submitted:
+                    if selected_reg:
+                        curr = conn.cursor()
+                        # Simpan data ke tabel sb_compliance
+                        curr.execute("""
+                            INSERT INTO sb_compliance (sb_number, ac_type, ac_reg, date_done, fh_done, remarks) 
+                            VALUES (?,?,?,?,?,?)
+                        """, (selected_sb, a_type, selected_reg, str(date_done), fh_done, remarks))
+                        conn.commit()
+                        st.success(f"✅ Success! Compliance record for {selected_reg} updated.")
+                        st.rerun()
+                    else:
+                        st.error("Gagal! Pilih Aircraft Registration terlebih dahulu.")
+        else:
+            st.warning("Belum ada SB di Catalog. Silakan isi di menu Catalog terlebih dahulu.")
+    
+        conn.close()
+
 def show_update_maintenance_tasks():
     st.header("🛠️ Update Maintenance Tasks")
     conn = create_connection()
