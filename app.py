@@ -1,4 +1,7 @@
 import streamlit as st
+import sqlite3
+import pandas as pd
+import io
 from database import init_db
 import views.dashboard as dashboard
 import views.catalog as catalog
@@ -13,6 +16,15 @@ import datetime
 import part_interchange_mgmt  # Import file baru
 from views import catalog, initial_install
 from views import catalog, structure  # Import file baru
+
+def create_connection():
+    db_file = "aircraft.db"  # Sesuaikan dengan nama file DB AERO-SYNCH Bapak
+    conn = None
+    try:
+        conn = sqlite3.connect(db_file)
+    except Exception as e:
+        st.error(f"Gagal koneksi ke database: {e}")
+    return conn
 
 # 1. Konfigurasi Halaman
 st.set_page_config(
@@ -65,7 +77,7 @@ def update_page(key):
     if st.session_state[key] != "":
         st.session_state.page = st.session_state[key]
         # Tambahkan 'interchange' dan 'mat_plan' ke dalam list reset
-        keys_to_reset = ["cat", "maint", "status", "eng", "inv_select", "rcp", "proc", "nav_menu", "interchange", "mat_plan"]
+        keys_to_reset = ["cat", "maint", "status", "eng", "inv_select", "rcp", "proc", "nav_menu", "interchange", "mat_plan", "database_utility"]
         for k in keys_to_reset:
             if k != key and k in st.session_state:
                 st.session_state[k] = ""
@@ -78,7 +90,7 @@ def get_index(options, current_page):
 
 # 5. DEFINISI MENU (Sangat Penting: Harus di atas sebelum dipanggil selectbox)
 cat_opts = ["", "Aircraft Catalog", "Aircraft Configuration", "Initial Component Installed", "Maintenance Catalog", "Airworthiness Directives Catalog", "Service Bulletins Catalog"]
-maint_opts = ["", "AML Entry", "Maintenance Package / Work Pack", "Update Maintenance Tasks", "AD Compliance Entry"]
+maint_opts = ["", "AML Entry", "Maintenance Package / Work Pack", "Update Maintenance Tasks", "AD Compliance Entry", "SB Compliance Entry"]  # Tambahkan opsi untuk AD dan SB compliance
 status_opts = ["", "Aircraft Utilization Record", "Component Status", "Airworthiness Directive Status", "Service Bulletin Status"]
 eng_opts = ["", "Engineering Order", "Engineering Evaluation", "Deferred Defect"]
 inv_opts = ["", "Parts Catalog", "Parts In Stock", "Parts Usage History", "Incoming/Outgoing", "Allotment"]
@@ -90,6 +102,69 @@ mat_plan_opts = ["", "Scheduled Component Removal", "Unscheduled Removal Forcast
 # Membuat list gabungan untuk fitur "Quick Jump" agar tidak NameError
 opsi_menu = ["Dashboard"] + cat_opts + maint_opts + status_opts + eng_opts + inv_opts + rcp_opts + proc_opts + part_interchange_opts + mat_plan_opts
 opsi_menu = [opt for opt in opsi_menu if opt != ""] # Buang string kosong
+
+# 2. FUNGSI UTILITY EXCEL (EXPORT/IMPORT)
+def show_database_utility_page():
+    st.subheader("🛠️ Database Utility: Excel Export & Import")
+    st.write("Gunakan fitur ini untuk backup data ke Excel atau memperbarui data secara massal.")
+    
+    conn = create_connection()
+    if not conn:
+        return
+
+    try:
+        tables_df = pd.read_sql("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';", conn)
+        table_options = tables_df['name'].tolist()
+    except:
+        table_options = ["master_part_number", "master_serial_number", "inventory_transaction"]
+
+    selected_table = st.selectbox("Pilih Tabel yang Akan Diproses:", options=table_options)
+    st.divider()
+    
+    # --- PROSES DOWNLOAD ---
+    st.write(f"### 📥 Download Tabel '{selected_table}' ke Excel")
+    try:
+        df_current = pd.read_sql(f"SELECT * FROM {selected_table}", conn)
+        if not df_current.empty:
+            st.dataframe(df_current.head(5), use_container_width=True)
+            
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                df_current.to_excel(writer, index=False, sheet_name=selected_table)
+            
+            st.download_button(
+                label=f"🟢 Download {selected_table}.xlsx",
+                data=buffer.getvalue(),
+                file_name=f"AEROSYNCH_{selected_table}_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        else:
+            st.warning(f"Tabel '{selected_table}' saat ini masih kosong.")
+    except Exception as e:
+        st.error(f"Gagal memuat data: {e}")
+
+    st.divider()
+
+    # --- PROSES UPLOAD & REPLACE ---
+    st.write(f"### 📤 Upload & Replace Tabel '{selected_table}'")
+    st.warning("⚠️ PERINGATAN: Mengunggah file ini akan MENGHAPUS seluruh data lama di tabel tersebut dan menggantinya dengan data Excel baru!")
+
+    uploaded_file = st.file_uploader(f"Pilih file Excel untuk menggantikan tabel '{selected_table}'", type=["xlsx"])
+
+    if uploaded_file is not None:
+        try:
+            df_uploaded = pd.read_excel(uploaded_file)
+            st.write("📊 **Pratinjau Data Baru:**")
+            st.dataframe(df_uploaded.head(5), use_container_width=True)
+            
+            if st.button(f"🔴 KONFIRMASI: Timpa Tabel {selected_table} Sekarang", type="primary"):
+                df_uploaded.to_sql(selected_table, conn, if_exists='replace', index=False)
+                st.success(f"✅ Sukses! Data pada tabel '{selected_table}' berhasil diperbarui total.")
+                st.balloons()
+        except Exception as e:
+            st.error(f"Gagal memproses file Excel: {e}")
+            
+    conn.close()
 
 # 6. SIDEBAR CUSTOM
 st.sidebar.header("MAIN MENU")
@@ -110,6 +185,7 @@ st.sidebar.selectbox("RCPM", rcp_opts, index=get_index(rcp_opts, st.session_stat
 st.sidebar.selectbox("PROCUREMENT", proc_opts, index=get_index(proc_opts, st.session_state.page), key="proc", on_change=update_page, args=("proc",))
 st.sidebar.selectbox("PART INTERCHANGE MGMT", ["", "Part Interchangeability Management"], index=get_index(["", "Part Interchangeability Management"], st.session_state.page), key="interchange", on_change=update_page, args=("interchange",))
 st.sidebar.selectbox("MATERIAL PLANNING", mat_plan_opts, index=get_index(mat_plan_opts, st.session_state.page), key="mat_plan", on_change=update_page, args=("mat_plan",))
+st.sidebar.selectbox("DATABASE UTILITY", ["", "Database Utility"], index=get_index(["", "Database Utility"], st.session_state.page), key="database_utility", on_change=update_page, args=("database_utility",))
 
 st.sidebar.divider()
 # Navigasi Cepat (Sudah tidak akan error opsi_menu lagi)
@@ -142,5 +218,8 @@ elif page in mat_plan_opts:
     material_planning.show(page)
 elif page == "Part Interchangeability Management":
     part_interchange_mgmt.show(page)
+elif page == "Database Utility":
+    show_database_utility_page()
 else:
     st.info(f"Halaman '{page}' sedang dalam pengembangan.")
+
