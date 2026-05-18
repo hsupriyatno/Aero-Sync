@@ -41,16 +41,16 @@ st.markdown("""
     <style>
     /* Menghilangkan padding default Streamlit di bagian atas */
     .block-container {
-        padding-top: 0rem !important; /* Kita beri sedikit napas agar tidak amblas */
+        padding-top: 0rem !important;
         padding-bottom: 0rem !important;
     }
-    
+
     /* Mengatur judul utama agar proporsional */
     .main-title { 
         font-size: 40px !important; 
         font-weight: bold; 
         color: #1E3A8A; 
-        margin-top: 0px; /* Kita set ke 0 dulu supaya dia muncul kembali */
+        margin-top: 0px;
         margin-bottom: 5px;
         padding-top: 0px;
     }
@@ -60,10 +60,17 @@ st.markdown("""
     
     /* Tambahan untuk menghilangkan spasi extra dari header default st */
     header[data-testid="stHeader"] {
-        background-color: rgba(0,0,0,0); /* Transparan saja */
+        background-color: rgba(0,0,0,0);
         color: white;
     }
     footer {visibility: hidden;}
+
+    /* ======================================================== */
+    /* ---- TRICK BARU: PAKSA GESER GAMBAR PERTAMA DI APP ---- */
+    /* ======================================================== */
+    [data-testid="stMainBlockContainer"] img {
+        margin-left: 25px !important; /* Geser sejauh 25 pixel ke kanan */
+    }
     </style>
 """, unsafe_allow_html=True)
 
