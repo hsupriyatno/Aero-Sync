@@ -165,7 +165,38 @@ def show_database_utility_page():
             st.dataframe(df_uploaded.head(5), use_container_width=True)
             
             if st.button(f"🔴 KONFIRMASI: Timpa Tabel {selected_table} Sekarang", type="primary"):
+                # 1. Masukkan data dari Excel ke Database seperti biasa
                 df_uploaded.to_sql(selected_table, conn, if_exists='replace', index=False)
+                
+                # 2. PROSES AMAN: Kita paksa SQLite membuat ulang kolom 'id' yang hilang atau rusak
+                cursor = conn.cursor()
+                try:
+                    # Ambil daftar nama kolom yang baru saja dibuat di database
+                    cursor.execute(f"PRAGMA table_info({selected_table})")
+                    kolom_db = [row[1] for row in cursor.fetchall()]
+                    
+                    # Jika kolom 'id' atau 'ID' (huruf kecil/besar) tidak ditemukan di database murni:
+                    if 'id' not in kolom_db and 'ID' not in kolom_db:
+                        # Buat ulang tabel dengan kolom id AUTOINCREMENT agar halaman lain tidak crash
+                        st.info("Menyelaraskan struktur kolom 'id' otomatis untuk system...")
+                        
+                        # Ambil backup data sementara yang baru diupload
+                        df_temp = pd.read_sql(f"SELECT * FROM {selected_table}", conn)
+                        
+                        # Hapus tabel tiruan tadi
+                        cursor.execute(f"DROP TABLE {selected_table}")
+                        
+                        # Buat tabel murni dengan struktur ID resmi SQLite
+                        kolom_lain = ", ".join([f"`{k}` TEXT" for k in df_temp.columns])
+                        query_buat_tabel = f"CREATE TABLE {selected_table} (id INTEGER PRIMARY KEY AUTOINCREMENT, {kolom_lain})"
+                        cursor.execute(query_buat_tabel)
+                        
+                        # Masukkan kembali datanya tanpa mengusik kolom id bawaan database
+                        df_temp.to_sql(selected_table, conn, if_exists='append', index=False)
+                except Exception as ex:
+                    st.warning(f"Catatan sistem database: {ex}")
+                
+                conn.commit()
                 st.success(f"✅ Sukses! Data pada tabel '{selected_table}' berhasil diperbarui total.")
                 st.balloons()
         except Exception as e:
