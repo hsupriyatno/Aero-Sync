@@ -47,7 +47,7 @@ def show():
             fig1 = px.bar(util_type, x='aircraft_type', y='total_flight_hours', 
                           color='aircraft_type', title="Total FH per Aircraft Type")
             fig1.update_yaxes(range=[0, None], rangemode='nonnegative')
-            st.plotly_chart(fig1, use_container_width=True, config={'staticPlot': True})
+            st.plotly_chart(fig1, use_container_width=True)
 
     with col2:
         st.write("#### 2. Aircraft Utilization by ac_reg")
