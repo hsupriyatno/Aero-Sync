@@ -219,7 +219,7 @@ st.sidebar.selectbox("MAINTENANCE ENTRY", maint_opts, index=get_index(maint_opts
 st.sidebar.selectbox("MAINTENANCE STATUS", status_opts, index=get_index(status_opts, st.session_state.page), key="status", on_change=update_page, args=("status",))
 st.sidebar.selectbox("ENGINEERING", eng_opts, index=get_index(eng_opts, st.session_state.page), key="eng", on_change=update_page, args=("eng",))
 st.sidebar.selectbox("INVENTORY", inv_opts, index=get_index(inv_opts, st.session_state.page), key="inv_select", on_change=update_page, args=("inv_select",))
-st.sidebar.selectbox("RCPM", rcp_opts, index=get_index(rcp_opts, st.session_state.page), key="rcp", on_change=update_page, args=("rcp",))
+st.sidebar.selectbox("RELIABILITY CONTROL PROGRAM", rcp_opts, index=get_index(rcp_opts, st.session_state.page), key="rcp", on_change=update_page, args=("rcp",))
 st.sidebar.selectbox("PROCUREMENT", proc_opts, index=get_index(proc_opts, st.session_state.page), key="proc", on_change=update_page, args=("proc",))
 st.sidebar.selectbox("PART INTERCHANGE MGMT", ["", "Part Interchangeability Management"], index=get_index(["", "Part Interchangeability Management"], st.session_state.page), key="interchange", on_change=update_page, args=("interchange",))
 st.sidebar.selectbox("MATERIAL PLANNING", mat_plan_opts, index=get_index(mat_plan_opts, st.session_state.page), key="mat_plan", on_change=update_page, args=("mat_plan",))
