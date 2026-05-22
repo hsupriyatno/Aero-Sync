@@ -85,22 +85,44 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         grn_number TEXT, date_created TEXT, part_number TEXT, serial_number TEXT)''')
 
-    # 8. TRANSACTION (Movement Control / Stock History) - Ditambah Qty & UOM
+# 8. TRANSACTION (Movement Control / Stock History) - Ditambah Qty & UOM
     curr.execute('''CREATE TABLE IF NOT EXISTS inventory_transaction (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        date TEXT, 
         doc_number TEXT, 
-        part_number TEXT, 
-        serial_number TEXT,
-        quantity REAL DEFAULT 1.0, -- Tambahan Baru
-        uom TEXT,                  -- Tambahan Baru (EA, LT, KG, dll)
+        quantity INTEGER DEFAULT 1, 
+        uom TEXT,                  -- (EA, LT, KG, QT, dll)
         store_location TEXT, 
         issued_to TEXT, 
         received_from TEXT, 
         status TEXT, 
-        remark TEXT)''')
+        remark TEXT,
+        transaction_date TEXT NOT NULL,          -- Format: YYYY-MM-DD
+        transaction_type TEXT NOT NULL,          -- 'OUT_REPAIR' atau 'IN_REPAIR'
+        ro_no TEXT NOT NULL,                     -- Nomor Repair Order / Dokumen Pengikat
+        part_number TEXT NOT NULL,
+        serial_number TEXT NOT NULL,
+        description TEXT,
+        location TEXT,                           -- Posisi rak gudang / nama repair shop
+        user_by TEXT
+    )''')
+        
+    # 🟢 9. Tabel Log TAT Rotable (Sudah Diperbaiki Posisi Kolom & Komanya)
+    curr.execute('''CREATE TABLE IF NOT EXISTS inventory_rotable_tat (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ro_no TEXT NOT NULL,                     -- Kunci pengikat RO
+        part_number TEXT NOT NULL,
+        serial_number TEXT NOT NULL,
+        description TEXT,
+        quantity INTEGER DEFAULT 1,              -- Ditata di sini (Aman)
+        uom TEXT,                                -- Ditata di sini (Aman)
+        date_sent TEXT NOT NULL,                 -- Format: YYYY-MM-DD (U/S Out)
+        date_received TEXT,                      -- Format: YYYY-MM-DD (S In, boleh NULL)
+        tat_days INTEGER,                        -- Hasil kalkulasi otomatis selisih hari
+        status TEXT DEFAULT 'Open',              -- 'Open' atau 'Closed'
+        UNIQUE(ro_no, serial_number)             -- Aturan UNIQUE wajib ditaruh paling bawah!
+    )''')
 
-    # 9. INSTALLED COMPONENTS (Disinkronkan dengan History)
+    # 10. INSTALLED COMPONENTS (Disinkronkan dengan History)
     curr.execute('''CREATE TABLE IF NOT EXISTS installed_components (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ac_reg TEXT, 
@@ -126,7 +148,7 @@ def init_db():
         status TEXT DEFAULT 'INSTALLED',
         FOREIGN KEY (ac_reg) REFERENCES catalog (ac_reg))''')
 
-    # 10. COMPONENT REMOVAL HISTORY (Untuk Analisis Reliability)
+    # 11. COMPONENT REMOVAL HISTORY (Untuk Analisis Reliability)
     curr.execute('''CREATE TABLE IF NOT EXISTS component_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ac_reg TEXT,
@@ -154,7 +176,7 @@ def init_db():
         remark TEXT
     )''')
 
-    #10. PART INTERCHANGE (Alternatif Part Number dan Interchangeability)
+    # 13. PART INTERCHANGE (Alternatif Part Number dan Interchangeability)
     curr.execute('''CREATE TABLE IF NOT EXISTS part_interchange (
         original_pn TEXT,
         alternate_pn TEXT,
@@ -163,7 +185,7 @@ def init_db():
         PRIMARY KEY (original_pn, alternate_pn)
     )''')
 
-    # 10. Tabel untuk Fleet Dashboard (Solusi error: no such table aircraft_status)
+    # 14. Tabel untuk Fleet Dashboard (Solusi error: no such table aircraft_status)
     curr.execute("""
         CREATE TABLE IF NOT EXISTS aircraft_status (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -173,7 +195,7 @@ def init_db():
         )
     """)
 
-    # 11. Tabel untuk Deferred Defect (OPEN/CLOSED)
+    # 15. Tabel untuk Deferred Defect (OPEN/CLOSED)
     curr.execute("""
         CREATE TABLE IF NOT EXISTS deferred_defects (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -189,7 +211,7 @@ def init_db():
         )
     """)
 
-    # 12. Tabel untuk Maintenance Schedule
+    # 16. Tabel untuk Maintenance Schedule
     curr.execute("""
         CREATE TABLE IF NOT EXISTS maintenance_schedule (
             rowid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -210,7 +232,7 @@ def init_db():
         )
     """)
 
-    # 13. Tabel untuk AML Utilization
+    # 17. Tabel untuk AML Utilization
     curr.execute("""
         CREATE TABLE IF NOT EXISTS aml_utilization (
             aml_no TEXT PRIMARY KEY,
@@ -225,7 +247,7 @@ def init_db():
             ac_csn INTEGER
         )
     """)
-    # 14. Tabel untuk AML Pilot Report
+    # 18. Tabel untuk AML Pilot Report
     curr.execute("""
         CREATE TABLE IF NOT EXISTS aml_pilot_report (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -237,7 +259,7 @@ def init_db():
             status TEXT DEFAULT 'OPEN'
         )
     """)
-    # 15. Tabel untuk AML Component Replacement
+    # 19. Tabel untuk AML Component Replacement
     curr.execute("""
         CREATE TABLE IF NOT EXISTS aml_component_replacement (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -254,7 +276,7 @@ def init_db():
             status TEXT DEFAULT 'OPEN'
         )
     """)
-    # 16. Tabel untuk Maintenance Catalog
+    # 20. Tabel untuk Maintenance Catalog
     curr.execute("""
         CREATE TABLE IF NOT EXISTS maintenance_catalog (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -269,7 +291,7 @@ def init_db():
         )
     """)
  
-    # 17. Tabel Header Paket
+    # 21. Tabel Header Paket
     curr.execute("""
         CREATE TABLE IF NOT EXISTS maintenance_packages (
             package_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -279,7 +301,7 @@ def init_db():
         )
     """)
 
-    # 18. Tabel Detail Isi Paket
+    # 22. Tabel Detail Isi Paket
     curr.execute("""
         CREATE TABLE IF NOT EXISTS package_task_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -290,7 +312,7 @@ def init_db():
         )
     """)
 
-    # 19. Material Request - Ditambah UOM
+    # 23. Material Request - Ditambah UOM
     curr.execute("""
         CREATE TABLE IF NOT EXISTS material_request (
             request_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -307,7 +329,7 @@ def init_db():
         )
     """)
 
-    # 20. Tabel AD Catalog dan Compliance
+    # 24. Tabel AD Catalog dan Compliance
     curr.execute("""
         CREATE TABLE IF NOT EXISTS ad_catalog (
             ad_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -322,7 +344,7 @@ def init_db():
             status TEXT DEFAULT 'Active'
         )
     """)
-    # 21. Tabel AD Compliance (Histori Pengerjaan)
+    # 25. Tabel AD Compliance (Histori Pengerjaan)
     curr.execute("""
         CREATE TABLE IF NOT EXISTS ad_compliance (
             comp_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -335,7 +357,7 @@ def init_db():
         )
     """)
 
-    # 22. Tabel SB Catalog dan Compliance
+    # 26. Tabel SB Catalog dan Compliance
     curr.execute("""
         CREATE TABLE IF NOT EXISTS sb_catalog (
             sb_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -350,7 +372,7 @@ def init_db():
             status TEXT DEFAULT 'Active'
         )
     """)
-    # 23. Tabel SB Compliance (Histori Pengerjaan)
+    # 27. Tabel SB Compliance (Histori Pengerjaan)
     curr.execute("""
         CREATE TABLE IF NOT EXISTS sb_compliance (
             comp_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -555,3 +577,55 @@ def get_fleet_current_status():
     df = pd.read_sql(query, conn)
     conn.close()
     return df
+
+def get_rotable_tat_summary():
+    """
+    Fungsi untuk menghitung riwayat TAT per komponen dan
+    menghitung rata-rata (average) TAT berdasarkan Part Number.
+    """
+    conn = create_connection()
+    if not conn:
+        return None, None
+        
+    try:
+        # 1. QUERY UNTUK DETAIL HISTORY (Setiap Kali Transaksi Selesai)
+        # Menghitung selisih hari menggunakan fungsi julianday bawaan SQLite
+        query_history = """
+            SELECT 
+                ro_no AS [Repair Order],
+                part_number AS [Part Number],
+                serial_number AS [Serial Number],
+                description AS [Description],
+                quantity AS [Qty],
+                uom AS [UOM],
+                date_sent AS [Date Sent (U/S)],
+                date_received AS [Date Received (S)],
+                tat_days AS [TAT Aktual (Days)],
+                status AS [Status]
+            FROM inventory_rotable_tat
+            ORDER BY date_sent DESC
+        """
+        df_history = pd.read_sql(query_history, conn)
+        
+        # 2. QUERY UNTUK RATA-RATA TAT PER PART NUMBER (AVERAGE LOGIC)
+        # Hanya menghitung data yang sudah kembali (status = 'Closed' atau tat_days tidak kosong)
+        query_average = """
+            SELECT 
+                part_number AS [Part Number],
+                description AS [Description],
+                COUNT(id) AS [Total Shop Visit],
+                ROUND(AVG(tat_days), 1) AS [Rata-rata TAT (Days)]
+            FROM inventory_rotable_tat
+            WHERE tat_days IS NOT NULL AND status = 'Closed'
+            GROUP BY part_number, description
+            ORDER BY [Rata-rata TAT (Days)] DESC
+        """
+        df_average = pd.read_sql(query_average, conn)
+        
+        return df_history, df_average
+        
+    except Exception as e:
+        print(f"Error saat kalkulasi TAT: {e}")
+        return pd.DataFrame(), pd.DataFrame()
+    finally:
+        conn.close()
