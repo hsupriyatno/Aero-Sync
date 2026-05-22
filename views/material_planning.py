@@ -13,8 +13,6 @@ def show_scheduled_removal():
     threshold_days = col2.number_input("Threshold Remaining Days:", value=90)
 
     conn = create_connection()
-    
-    # Query ini sudah menggunakan nama kolom yang benar: tsn_at_install
     query = """
         SELECT 
             i.ac_reg, i.component_name, i.part_number, i.serial_number,
@@ -26,7 +24,6 @@ def show_scheduled_removal():
         FROM installed_components i
         LEFT JOIN master_part_number m ON i.part_number = m.part_number
     """
-    
     try:
         df = pd.read_sql_query(query, conn)
     except Exception as e:
@@ -40,16 +37,12 @@ def show_scheduled_removal():
         today = datetime.now().date()
 
         for _, row in df.iterrows():
-            # Logika: TSN saat pasang + Total jam terbang sejak terpasang
             used_hrs = row['tsn_at_install'] + row['total_flown']
-            
-            # Hitung Remaining Hours
             if row['tbo_h'] > 0:
                 rem_hrs = row['tbo_h'] - used_hrs
             else:
-                rem_hrs = 999999 # Jika TBO tidak diset, anggap aman
+                rem_hrs = 999999
             
-            # Hitung Remaining Days (Placeholder jika belum ada tanggal install)
             rem_days = 99999
             if row['install_date'] and row['tbo_c'] > 0:
                 try:
@@ -59,7 +52,6 @@ def show_scheduled_removal():
                 except:
                     pass
 
-            # Filter Threshold
             if rem_hrs <= threshold_hrs or rem_days <= threshold_days:
                 forecast_list.append({
                     "A/C": row['ac_reg'],
@@ -80,74 +72,127 @@ def show_scheduled_removal():
         st.info("Tidak ada data komponen atau database kosong.")
 
 def show_unscheduled_removal_forecasting():
-
     st.subheader("📈 Unscheduled Removal Forecasting (MTBUR Analysis)")
     st.write("Analisis ini membantu memprediksi kebutuhan stok berdasarkan data unscheduled removal dan TAT.")
 
-    # 1. Pilih Part Number yang mau dianalisa
     conn = create_connection()
+    
+    # Ambil list Part Number
     pn_list = pd.read_sql_query("SELECT DISTINCT part_number FROM component_history", conn)
+    if pn_list.empty:
+        st.info("Belum ada data di component_history untuk analisis MTBUR.")
+        conn.close()
+        return
+        
     selected_pn = st.selectbox("Select Part Number for Analysis:", pn_list['part_number'])
 
-    # 2. Ambil Parameter Pendukung
+    # 🟢 LOGIKA OTOMATISASI TAT: Ambil rata-rata TAT aktual khusus untuk Part Number yang dipilih
+    try:
+        query_tat = "SELECT AVG(tat_days) as avg_tat FROM inventory_rotable_tat WHERE part_number = ? AND status = 'Closed'"
+        df_tat_val = pd.read_sql_query(query_tat, conn, params=(selected_pn,))
+        db_tat = df_tat_val.iloc[0]['avg_tat']
+        # Jika database belum punya riwayat TAT untuk P/N ini, default ke 30 hari
+        calculated_tat = int(round(db_tat)) if (db_tat is not None and pd.notna(db_tat)) else 30
+    except:
+        calculated_tat = 30
+
     col1, col2, col3 = st.columns(3)
     qpa = col1.number_input("QPA (Qty Per Aircraft):", value=1, min_value=1)
-    tat = col2.number_input("Average TAT (Days):", value=30)
+    
+    # Tampilkan nilai TAT hasil kalkulasi otomatis, tapi tetap izinkan user mengubah jika diperlukan
+    tat = col2.number_input("Average TAT (Days):", value=calculated_tat, help="Otomatis mengambil rata-rata riwayat shop visit P/N ini.")
     confidence = col3.slider("Service Level (Confidence):", 0.80, 0.99, 0.95)
 
-    # 3. Hitung Statistik dari Database
-    # Ambil Total Unscheduled Removal
-    query_ur = f"SELECT COUNT(*) as total_ur FROM component_history WHERE part_number = '{selected_pn}' AND reason_removal = 'Unscheduled'"
-    df_ur = pd.read_sql_query(query_ur, conn)
+    # Hitung Statistik Unscheduled Removal
+    query_ur = "SELECT COUNT(*) as total_ur FROM component_history WHERE part_number = ? AND reason_removal = 'Unscheduled'"
+    df_ur = pd.read_sql_query(query_ur, conn, params=(selected_pn,))
+    ur_count = df_ur.iloc[0]['total_ur'] if not df_ur.empty else 0
     
-    # Amankan pengambilan data (Gunakan if not empty)
-    if not df_ur.empty:
-        ur_count = df_ur.iloc[0]['total_ur']
-    else:
-        ur_count = 0
-    
-    # Ambil Total Fleet FH
+    # Hitung Total Fleet FH
     query_fh = "SELECT SUM(flight_hours) as total_fh FROM aml_utilization"
     df_fh = pd.read_sql_query(query_fh, conn)
-    
-    if not df_fh.empty and df_fh.iloc[0]['total_fh'] is not None:
-        total_fh = df_fh.iloc[0]['total_fh']
-    else:
-        total_fh = 1 # Hindari pembagian dengan nol
+    total_fh = df_fh.iloc[0]['total_fh'] if (not df_fh.empty and df_fh.iloc[0]['total_fh'] is not None) else 1
 
-    # 4. Kalkulasi MTBUR & Removal Rate
+    # Kalkulasi MTBUR & Removal Rate
     mtbur = (total_fh * qpa) / ur_count if ur_count > 0 else total_fh * qpa
     removal_rate_1000 = (ur_count * 1000) / (total_fh * qpa) if total_fh > 0 else 0
     
-    # 5. Poisson untuk Ideal Floating
+    # Poisson untuk Ideal Floating Stock
     daily_fh = total_fh / 365
     lambda_tat = (ur_count / total_fh) * (daily_fh * tat) if total_fh > 0 else 0
+    ideal_stock = poisson.ppf(confidence, lambda_tat) if lambda_tat > 0 else 0
 
-    # Mencari jumlah stok (k) dengan pengaman jika lambda_tat sangat kecil
-    if lambda_tat > 0:
-        ideal_stock = poisson.ppf(confidence, lambda_tat)
-    else:
-        ideal_stock = 0
-
-    # Mencari jumlah stok (k) agar probabilitas akumulatif >= confidence level
-    ideal_stock = poisson.ppf(confidence, lambda_tat)
-
-    # --- TAMPILKAN HASIL ---
+    # Tampilkan Hasil Analisis
     c1, c2, c3 = st.columns(3)
     c1.metric("MTBUR", f"{round(mtbur, 0)} FH")
     c2.metric("Removal Rate", f"{round(removal_rate_1000, 3)} /1000 FH")
     c3.metric("Ideal Floating Stock", f"{int(ideal_stock)} EA")
 
     st.write(f"💡 *Berdasarkan data, probabilitas kebutuhan selama {tat} hari TAT adalah {int(ideal_stock)} unit untuk mencapai service level {int(confidence*100)}%.*")
+    conn.close()
 
+# 🟢 REKOMENDASI TAMBAHAN: FUNGSI BARU UNTUK MONITORING LOG LENGKAP TAT ROTABLE
+def show_rotable_tat_dashboard():
+    st.subheader("📦 Rotable Component Turn Around Time (TAT) Dashboard")
+    st.write("Rangkuman durasi pengerjaan komponen semenjak keluar STORE (Unserviceable) hingga kembali (Serviceable).")
+    
+    conn = create_connection()
+    try:
+        # 1. Tampilkan Rata-rata TAT per Part Number
+        st.write("#### 📊 Average TAT Summary per Part Number")
+        query_avg = """
+            SELECT part_number as [Part Number], description as [Description],
+                   COUNT(id) as [Total History], ROUND(AVG(tat_days), 1) as [Avg TAT (Days)]
+            FROM inventory_rotable_tat WHERE tat_days IS NOT NULL AND status = 'Closed'
+            GROUP BY part_number, description ORDER BY [Avg TAT (Days)] DESC
+        """
+        df_avg = pd.read_sql_query(query_avg, conn)
+        if not df_avg.empty:
+            st.dataframe(df_avg, use_container_width=True, hide_index=True)
+        else:
+            st.info("Belum ada riwayat komponen yang berstatus 'Closed' (Kembali ke gudang).")
+
+        st.divider()
+        
+        # 2. Tampilkan Detail Log dengan Box Scroll Biar Ringan
+        st.write("#### 📜 Detailed Shop Visit History Log")
+        search_pn = st.text_input("🔍 Cari Nomor Part atau Serial Number:", placeholder="Ketik nomor part/serial...")
+        
+        query_log = "SELECT ro_no, part_number, serial_number, description, quantity, uom, date_sent, date_received, tat_days, status FROM inventory_rotable_tat"
+        params = []
+        if search_pn.strip() != "":
+            query_log += " WHERE part_number LIKE ? OR serial_number LIKE ?"
+            params.extend([f"%{search_pn.strip()}%", f"%{search_pn.strip()}%"])
+        query_log += " ORDER BY date_sent DESC"
+        
+        df_log = pd.read_sql_query(query_log, conn, params=params)
+        
+        # Kotak scroll setinggi 350px biar super ringan dibuka di laptop/HP
+        with st.container(height=350, border=True):
+            if not df_log.empty:
+                st.dataframe(df_log, use_container_width=True, hide_index=True)
+            else:
+                st.caption("Tidak ada log transaksi rotable.")
+    finally:
+        conn.close()
+
+# 🟢 SINKRONISASI PENGALIHAN PAGE DI SINI
+# Ganti fungsi show() paling bawah milik Bapak menjadi seperti ini:
 def show(page):
-    # Gunakan lowercase dan hilangkan spasi untuk perbandingan yang lebih aman
     page_id = page.lower().replace(" ", "")
     
     if "scheduledcomponent" in page_id:
         show_scheduled_removal()
+        
     elif "unscheduled" in page_id:
-        show_unscheduled_removal_forecasting()
+        # 🟢 KITA JADIKAN 2 TAB DI SINI AGAR SINKRON DENGAN SIDEBAR BAPAK
+        tab1, tab2 = st.tabs(["📈 MTBUR Forecasting Analysis", "📦 Rotable TAT Dashboard"])
+        
+        with tab1:
+            show_unscheduled_removal_forecasting()
+        with tab2:
+            show_rotable_tat_dashboard()
+            
     elif "requisition" in page_id:
         st.subheader("📝 Material Requisition Module")
         st.info("Form permintaan barang akan muncul di sini.")
