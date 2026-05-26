@@ -31,13 +31,14 @@ def show():
     df_fleet = pd.read_sql_query("SELECT ac_reg, ac_type FROM catalog", conn)
     if df_fleet.empty:
         st.warning("Data Catalog kosong. Mohon isi Aircraft Catalog dulu.")
+        conn.close()
         return
 
     selected_reg = st.selectbox("Pilih Aircraft Registration", df_fleet['ac_reg'])
     selected_type = df_fleet[df_fleet['ac_reg'] == selected_reg]['ac_type'].values[0]
     st.info(f"Unit: {selected_reg} | Type: {selected_type}")
 
-    # 2. Ambil Struktur Pesawat (Logic Grid Tetap Sama)
+    # 2. Ambil Struktur Pesawat (Logic Grid)
     query_struct = """
         SELECT sub_component, parent_component, required_qty, ata_chapter 
         FROM aircraft_structure 
@@ -53,7 +54,7 @@ def show():
             with cols[idx % 4]:
                 is_layer_1 = item['parent_component'].lower() == "airframe"
 
-                # Hitung Total Required Berdasarkan Jumlah Parent (Maintain Logic)
+                # Hitung Total Required Berdasarkan Jumlah Parent
                 curr.execute("SELECT COUNT(*) FROM installed_components WHERE ac_reg = ? AND component_name = ?", 
                              (selected_reg, item['parent_component']))
                 parent_count = curr.fetchone()[0]
@@ -63,12 +64,12 @@ def show():
                 curr.execute("SELECT parent_sn FROM installed_components WHERE ac_reg = ? AND component_name = ?", (selected_reg, item['sub_component']))
                 already_in = len(curr.fetchall())
                 
-                # Display Only untuk Box
+                # Display Only untuk Box Info Parent
                 curr.execute("SELECT parent_sn FROM installed_components WHERE ac_reg = ? AND component_name = ?", (selected_reg, item['sub_component']))
                 p_data = curr.fetchone()
                 parent_info = p_data[0] if p_data else "Airframe"
 
-                # Logika Warna
+                # Logika Warna Box
                 is_complete = already_in >= total_required
                 if is_complete:
                     base_color, border_color = "#ffffff", "#2e7d32"
@@ -108,13 +109,11 @@ def show():
             df_master_pn = pd.read_sql("SELECT part_number, description FROM master_part_number", conn)
             
         # --- LOGIKA PARTS INTERCHANGE ---
-        # Ambil P/N utama dari master
         main_pn_list = df_master_pn['part_number'].tolist()
         final_pn_options = []
 
         for pn in main_pn_list:
             final_pn_options.append(pn)
-            # Cari apakah ada P/N pengganti (Interchange) untuk P/N ini
             curr.execute("""
                 SELECT alternate_pn, interchange_type FROM part_interchange 
                 WHERE original_pn = ?
@@ -122,11 +121,9 @@ def show():
             rows = curr.fetchall()
             for row in rows:
                 alt_pn, ic_type = row
-                label = f"{alt_pn} (Alt for {pn})" if ic_type == 'TWO-WAY' else f"{alt_pn} (Supersedes {pn})"
                 if alt_pn not in final_pn_options:
                     final_pn_options.append(alt_pn)
 
-        # Masukkan ke Selectbox Bapak
         options_pn = ["-- Pilih P/N --"] + final_pn_options
         selected_pn = st.selectbox("Pilih Part Number (Interchangeable)", options=options_pn)
 
@@ -164,22 +161,22 @@ def show():
                 selected_parent_full = st.selectbox("Install to (Parent S/N)", options=parent_sn_list)
                 selected_sn = st.selectbox("Serial Number", options=["-- Pilih S/N --"] + sn_options)
                 pos = st.selectbox("Position", ["LH", "RH", "CTR", "NO.1", "NO.2", "ONLY"])
+                install_date = st.date_input("Date of Install", value=datetime.now().date())    
             
             with c2:
                 st.success(f"**Component Name:**\n\n{comp_desc}")
-                tsn = st.number_input("TSN", step=0.1)
-                csn = st.number_input("CSN", step=1)
-                tso = st.number_input("TSO", step=0.1)
-                cso = st.number_input("CSO", step=1)
-                dsn = st.number_input("DSN", step=0.1)
-                dso = st.number_input("DSO", step=0.1)
-                ins_af_hrs = st.number_input("Aircraft Hours at Install", step=0.1, help="Jam terbang pesawat saat komponen ini dipasang")
-                ins_af_cyc = st.number_input("Aircraft Cycles at Install", step=1)
+                tsn_at_install = st.number_input("TSN at Install", step=0.1)
+                csn_at_install = st.number_input("CSN at Install", step=1)
+                tso_at_install = st.number_input("TSO at Install", step=0.1)
+                cso_at_install = st.number_input("CSO at Install", step=1)
+                dsn_at_install = st.number_input("DSN at Install", step=0.1)
+                dso_at_install = st.number_input("DSO at Install", step=0.1)
+                install_af_hours = st.number_input("Aircraft Hours at Install", step=0.1, help="Jam terbang pesawat saat komponen ini dipasang")
+                install_af_cycles = st.number_input("Aircraft Cycles at Install", step=1)
 
             submitted = st.form_submit_button("Save Installation")
 
             if submitted:
-                # --- LOGIKA VALIDASI KUOTA DINAMIS ---
                 curr.execute("SELECT required_qty, parent_component FROM aircraft_structure WHERE ac_type = ? AND sub_component = ?", 
                              (selected_type, st.session_state.target_comp))
                 res_struct = curr.fetchone()
@@ -201,96 +198,102 @@ def show():
 
                 if already_installed >= total_required_qty:
                     st.error(f"Gagal! {st.session_state.target_comp} sudah mencapai kuota total ({already_installed}/{total_required_qty}).")
-                    st.info(f"Struktur membutuhkan {base_qty} unit per {parent_name}.")
                 elif selected_sn == "-- Pilih S/N --":
                     st.error("Silahkan pilih Serial Number terlebih dahulu.")
                 else:
-                    # --- EKSTRAK FINAL PARENT S/N ---
                     if "|" in selected_parent_full:
                         final_p_sn = selected_parent_full.split("| S/N: ")[1].split(" |")[0]
                     else:
                         final_p_sn = "Airframe"
 
-                    # Cek apakah P/N yang dipilih adalah barang yang sudah ditarik (Superseded)
-                curr.execute("""
-                    SELECT alternate_pn FROM part_interchange 
-                    WHERE original_pn = ? AND interchange_type = 'ONE-WAY'
-                """, (selected_pn,))
-                is_outdated = curr.fetchone()
-
-                if is_outdated:
-                    st.warning(f"⚠️ Perhatian: P/N {selected_pn} sebenarnya sudah digantikan oleh {is_outdated[0]}. Pastikan ini sudah sesuai dengan manual.")
-
-                    # --- JALANKAN INSERT ---
-                try:
                     curr.execute("""
-                        INSERT INTO installed_components (
-                            ac_reg, parent_sn, component_name, position,
-                            part_number, serial_number, 
-                            install_date, install_af_hours, install_af_cycles, -- Kolom baru
-                            tsn_at_install, csn_at_install,                    -- Ganti nama kolom agar jelas
-                            tso, cso, dsn, dso, status
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INSTALLED')
-                    """, (selected_reg, final_p_sn, st.session_state.target_comp, pos,
-                        selected_pn, selected_sn, 
-                        datetime.now().strftime('%Y-%m-%d'), ins_af_hrs, ins_af_cyc, # Data AF saat pasang
-                        tsn, csn, tso, cso, dsn, dso))
-                        
-                    curr.execute("UPDATE master_serial_number SET current_location = 'Aircraft', location = ? WHERE serial_number = ?", 
-                                    (selected_reg, selected_sn))
-                        
-                    conn.commit()
-                    st.success(f"Berhasil Terpasang!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Kesalahan Database: {e}")
+                        SELECT alternate_pn FROM part_interchange 
+                        WHERE original_pn = ? AND interchange_type = 'ONE-WAY'
+                    """, (selected_pn,))
+                    is_outdated = curr.fetchone()
 
-# 4. List & Report
+                    if is_outdated:
+                        st.warning(f"⚠️ Perhatian: P/N {selected_pn} sebenarnya sudah digantikan oleh {is_outdated[0]}. Pastikan ini sudah sesuai dengan manual.")
+
+                    try:
+                        curr.execute("""
+                            INSERT INTO installed_components (
+                                ac_reg, parent_sn, component_name, position,
+                                part_number, serial_number, install_date, 
+                                install_af_hours, install_af_cycles,
+                                tsn_at_install, csn_at_install, tso_at_install, 
+                                cso_at_install, dsn_at_install, dso_at_install, status
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'INSTALLED')
+                        """, (selected_reg, final_p_sn, st.session_state.target_comp, pos,
+                              selected_pn, selected_sn, install_date.strftime('%Y-%m-%d'), 
+                              install_af_hours, install_af_cycles,
+                              tsn_at_install, csn_at_install, tso_at_install, cso_at_install, dsn_at_install, dso_at_install))
+                            
+                        curr.execute("UPDATE master_serial_number SET current_location = 'Aircraft', location = ? WHERE serial_number = ?", 
+                                     (selected_reg, selected_sn))
+                            
+                        conn.commit()
+                        st.success(f"Berhasil Terpasang!")
+                        st.session_state.show_form = False
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Kesalahan Database: {e}")
+
+# 4. List & Report (DI-FIX LENGKAP DI SINI)
     st.subheader(f"📋 Installed Components List - {selected_reg}")
     
-    # Query disesuaikan agar nama alias (AS) cocok dengan pemanggilan di loop
+    # Perbaikan Query: Ambil field asli serial_number & install_af_hours, buang koma menggantung
     df_installed = pd.read_sql_query(f"""
         SELECT 
             id, 
+            install_date,
             position AS POS, 
             component_name AS NAME, 
             part_number AS PN, 
-            parent_sn AS SN,          -- Ganti serial_number AS SN menjadi parent_sn AS SN
+            serial_number AS SN,
             parent_sn AS PARENT_SN,
-            install_af_hours, 
-            tsn_at_install
+            install_af_hours,
+            tsn_at_install AS TSN_AT_INSTALL,
+            csn_at_install AS CSN_AT_INSTALL,
+            tso_at_install AS TSO_AT_INSTALL,
+            cso_at_install AS CSO_AT_INSTALL,
+            dsn_at_install AS DSN_AT_INSTALL,
+            dso_at_install AS DSO_AT_INSTALL
         FROM installed_components 
         WHERE ac_reg = '{selected_reg}'
     """, conn)
     
     if not df_installed.empty:
-        for i, row in df_installed.iterrows():
-            # Membuat container agar tiap baris punya batas yang jelas
-            with st.container():
-                r1, r2, r3, r4 = st.columns([1, 4, 2, 1])
-            
-                r1.write(f"**{row['POS']}**")
-            
-                # Info Komponen & Jam Pasang
-                r2.write(f"{row['NAME']} (PN: {row['PN']} / SN: {row['SN']})")
-                r2.caption(f"Installed at: {row['install_af_hours']} AF Hrs | Start TSN: {row['tsn_at_install']}")
-            
-                r3.write(f"Parent: {row['PARENT_SN']}")
-            
-                # Logika Tombol Delete
-                if r4.button("🗑️", key=f"del_{row['id']}"):
-                    curr.execute("SELECT serial_number FROM installed_components WHERE id = ?", (row['id'],))
-                    sn_to_release = curr.fetchone()
-                    
-                    if sn_to_release:
-                        sn_val = sn_to_release[0]
-                        # 1. Balikkan status ke Store
-                        curr.execute("UPDATE master_serial_number SET current_location = 'HO Store', location = 'None' WHERE serial_number = ?", (sn_val,))
-                        # 2. Hapus dari daftar terpasang
-                        curr.execute("DELETE FROM installed_components WHERE id = ?", (row['id'],))
-                        conn.commit()
-                        st.success(f"S/N {sn_val} telah dilepas.")
-                        st.rerun()
-            st.divider() # Garis pembatas antar komponen
+        # Tambahkan container box scroll biar rapi dan tidak memanjang ke bawah
+        with st.container(height=400, border=True):
+            for i, row in df_installed.iterrows():
+                with st.container():
+                    r1, r2, r3, r4 = st.columns([1, 4, 2, 1])
+                
+                    r1.write(f"**{row['POS']}**")
+                
+                    # Tampilan Nama, PN, SN, dan Jam Pesawat saat instalasi
+                    r2.write(f"**{row['NAME']}** (PN: `{row['PN']}` / SN: `{row['SN']}`)")
+                    r2.caption(f"📅 Installed: {row['install_date']} | 🛫 At: {row['install_af_hours']} AF Hrs | ⏱️ Start TSN: {row['TSN_AT_INSTALL']}")
+                
+                    # Penamaan kolom parent sesuai alias query terbaru
+                    r3.write(f"Parent SN: `{row['PARENT_SN']}`")
+                
+                    # Logika Tombol Delete Menggunakan S/N Asli Komponen Komponen
+                    if r4.button("🗑️", key=f"del_{row['id']}"):
+                        sn_val = row['SN'] # Langsung ambil dari row dataframe
+                        try:
+                            # 1. Balikkan status komponen ke gudang utama
+                            curr.execute("UPDATE master_serial_number SET current_location = 'HO Store', location = 'None' WHERE serial_number = ?", (sn_val,))
+                            # 2. Hapus records instalasi dari database
+                            curr.execute("DELETE FROM installed_components WHERE id = ?", (row['id'],))
+                            conn.commit()
+                            st.success(f"S/N {sn_val} telah dilepas.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Gagal Menghapus: {e}")
+                st.divider() 
     else:
         st.info("Belum ada komponen terpasang untuk pesawat ini.")
+        
+    conn.close()

@@ -4,6 +4,8 @@ from fpdf import FPDF
 import io
 from datetime import datetime
 from database import create_connection
+# JIKA fungsi get_component_status_report ditaruh di database.py, biarkan ini. 
+# Namun di bawah ini kita akan pakai integrasi langsung agar filter per registrasi pesawat (A/C Reg) berjalan sempurna.
 
 # ==========================================
 # 1. FUNGSI PENDUKUNG (DATA & EXPORT)
@@ -29,7 +31,6 @@ def generate_pdf_report(df_input):
     
     pdf.set_font("Arial", '', 7)
     for _, row in df_input.iterrows():
-        # Clean data dari newline untuk PDF
         lc = str(row.get('Last Compliance', '')).replace("\n", " ").replace("<br>", " ")
         pdf.cell(widths[0], 7, str(row.get('Registration', '')), border=1, align='C')
         pdf.cell(widths[1], 7, str(row.get('AD Number', '')), border=1, align='C')
@@ -42,7 +43,6 @@ def generate_pdf_report(df_input):
         pdf.cell(widths[8], 7, str(row.get('Status', '')), border=1, align='C')
         pdf.ln()
         
-    # FIX: Output dipindahkan ke luar 'for' loop agar seluruh baris tercetak sempurna
     output = pdf.output(dest='S')
     if isinstance(output, str):
         return output.encode('latin-1')
@@ -50,7 +50,6 @@ def generate_pdf_report(df_input):
 
 def get_utilization_data():
     conn = create_connection()
-    # FIX: Mengubah c.ac.tsn menjadi c.tsn sesuai skema kolom SQLite asli
     query = """
     SELECT
         c.ac_reg AS [Registration], c.ac_type AS [Type],
@@ -68,7 +67,6 @@ def get_utilization_data():
     return df
 
 def get_detailed_history(ac_reg, start_date, end_date):
-    """Mengambil data histori pemakaian pesawat berdasarkan rentang tanggal."""
     conn = create_connection()
     try:
         query = """
@@ -146,7 +144,6 @@ def show(page_name):
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
                 
-                # --- FILTER DETAILED UTILIZATION HISTORY ---
                 st.divider()
                 st.markdown('<p class="section-font">🔍 Filter Detailed Utilization History</p>', unsafe_allow_html=True)
                 
@@ -250,19 +247,24 @@ def show(page_name):
             else:
                 st.info("Database AD kosong.")
                 
-        # === HALAMAN 3: COMPONENT STATUS ===
+        # === HALAMAN 3: COMPONENT STATUS (Bagian yang Di-update) ===
         elif page_name == "Component Status":
             st.header("✈️ Component Status")
             df_util = get_utilization_data()
             list_reg = df_util['Registration'].unique()
+            
+            # Filter Registrasi Pesawat
             selected_reg = st.selectbox("Select Aircraft Registration:", list_reg, key="reg_comp")
             st.subheader(f"📊 Detailed Component Status - {selected_reg}")
             
             conn = create_connection()
             curr = conn.cursor()
+            
+            # Ambil Base Data Catalog Pesawat
             curr.execute("SELECT tsn, csn FROM catalog WHERE ac_reg = ?", (selected_reg,))
             base_data = curr.fetchone()
    
+            # Ambil Total Akumulasi Jam Terbang dari AML
             curr.execute("SELECT SUM(flight_hours), SUM(landings) FROM aml_utilization WHERE ac_reg = ?", (selected_reg,))
             acc_data = curr.fetchone()
             
@@ -270,64 +272,72 @@ def show(page_name):
             current_ac_cyc = (base_data[1] or 0) + (acc_data[1] or 0)
             st.info(f"**Current Airframe Status:** TSN: {current_ac_hrs:.2f} Hours / CSN: {int(current_ac_cyc)} Cycles")
 
-            # FIX: Kolom TBO dibersihkan dari awalan 'm.' agar terbaca mulus oleh Pandas
+            # 🛠️ INTEGRASI QUERY OTOMATIS BARU LANGSUNG DI SINI:
+            # Menggabungkan data installed_components dengan akumulasi waktu real-time
             query = f"""
                 SELECT
-                    i.component_name, i.part_number, i.parent_sn, i.position,
-                    i.install_af_hours, i.install_af_cycles,
-                    i.tsn_at_install, i.csn_at_install, i.tso, i.cso, i.install_date,
-                    m.tbo_hours, m.tbo_cycles, m.tbo_calendar
+                    i.component_name, 
+                    i.part_number, 
+                    i.serial_number, 
+                    i.position,
+                    i.install_date,
+                    -- Menghitung TSN & CSN Aktual Terupdate lewat SQL
+                    (i.tsn_at_install + ({current_ac_hrs} - i.install_af_hours)) AS actual_tsn,
+                    (i.csn_at_install + ({current_ac_cyc} - i.install_af_cycles)) AS actual_csn,
+                    -- Menghitung TSO & CSO Aktual
+                    (IFNULL(m_sn.tso, 0) + ({current_ac_hrs} - i.install_af_hours)) AS actual_tso,
+                    (IFNULL(m_sn.cso, 0) + ({current_ac_cyc} - i.install_af_cycles)) AS actual_cso,
+                    m_pn.tbo_hours, 
+                    m_pn.tbo_cycles, 
+                    m_pn.tbo_calendar
                 FROM installed_components i
-                LEFT JOIN master_part_number m ON i.part_number = m.part_number
+                LEFT JOIN master_part_number m_pn ON i.part_number = m_pn.part_number
+                LEFT JOIN master_serial_number m_sn ON i.part_number = m_sn.part_number AND i.serial_number = m_sn.serial_number
                 WHERE i.ac_reg = '{selected_reg}'
-                AND i.parent_sn IS NOT NULL AND i.parent_sn != '' AND i.parent_sn != '0'
             """
 
             df = pd.read_sql_query(query, conn)
             df = df.fillna(0)
-            
-            cols_to_fix = ['install_af_cycles', 'csn_at_install', 'cso', 'tbo_cycles']
-            for col in cols_to_fix:
-                if col in df.columns:
-                    df[col] = df[col].astype(int)
 
             if not df.empty:
                 status_list = []
                 today = datetime.now().date()
+                
                 for _, row in df.iterrows():
-                    diff_hrs = current_ac_hrs - row['install_af_hours']
-                    diff_cyc = current_ac_cyc - row['install_af_cycles']
-
-                    total_tsn = (row['tsn_at_install'] or 0) + diff_hrs
-                    total_csn = (row['csn_at_install'] or 0) + diff_cyc
+                    # Proteksi matematika memastikan nilai tidak negatif
+                    total_tsn = max(0.0, row['actual_tsn'])
+                    total_csn = max(0, int(row['actual_csn']))
+                    
+                    cur_tso = max(0.0, row['actual_tso'])
+                    cur_cso = max(0, int(row['actual_cso']))
+                    
                     days_since = (today - pd.to_datetime(row['install_date']).date()).days if row['install_date'] else 0
 
-                    cur_tso = (row['tso'] or 0) + diff_hrs
-                    cur_cso = (row['cso'] or 0) + diff_cyc
+                    # Kalkulasi Sisa Masa Pakai (Remaining Limit)
+                    rem_hrs = max(0.0, row['tbo_hours'] - cur_tso) if row['tbo_hours'] > 0 else 0
+                    rem_cyc = max(0, int(row['tbo_cycles'] - cur_cso)) if row['tbo_cycles'] > 0 else 0
+                    rem_mon = max(0.0, row['tbo_calendar'] - (days_since / 30.44)) if row['tbo_calendar'] > 0 else 0
 
-                    # FIX: Menghilangkan string 'm.' pada row call
-                    rem_hrs = (row['tbo_hours'] or 0) - cur_tso if row['tbo_hours'] else 0
-                    rem_cyc = (row['tbo_cycles'] or 0) - cur_cso if row['tbo_cycles'] else 0
-                    rem_mon = (row['tbo_calendar'] or 0) - (days_since/30.44) if row['tbo_calendar'] else 0
-
+                    # Format Gabungan String Tampilan Kolom agar rapi (\n)
                     tbo_combined = f"{int(row['tbo_hours'])} H\n{int(row['tbo_cycles'])} C\n{int(row['tbo_calendar'])} M"
-                    tsn_combined = f"{total_tsn:.2f} TSN\n{int(total_csn)} CSN\n{int(days_since)} DSN"
-                    tso_combined = f"{cur_tso:.2f} TSO\n{int(cur_cso)} CSO\n{int(days_since)} DSO"
-                    rem_combined = f"{rem_hrs:.2f} H\n{int(rem_cyc)} C\n{max(0, round(rem_mon, 1))} M"
+                    tsn_combined = f"{total_tsn:.2f} TSN\n{total_csn} CSN\n{int(days_since)} DSN"
+                    tso_combined = f"{cur_tso:.2f} TSO\n{cur_cso} CSO\n{int(days_since)} DSO"
+                    rem_combined = f"{rem_hrs:.2f} H\n{rem_cyc} C\n{round(rem_mon, 1)} M"
 
                     status_list.append({
                         "Part Description": row['component_name'],
                         "P/N": row['part_number'],
-                        "S/N": row['parent_sn'],
+                        "S/N": row['serial_number'],
                         "Pos": row['position'],
                         "TBO (H/C/M)": tbo_combined,
                         "TSN/CSN/DSN": tsn_combined,
-                        "Current (TSO/CSO/DSO)": tso_combined,
+                        "Current Status": tso_combined,
                         "Remaining": rem_combined
                     })
 
                 df_final = pd.DataFrame(status_list)
                 
+                # Tombol Export Excel
                 col_space, col_btn = st.columns([5, 1])
                 with col_btn:
                     buffer = io.BytesIO()
@@ -335,21 +345,20 @@ def show(page_name):
                         df_final.to_excel(writer, index=False, sheet_name='Status')
                     st.download_button(label="📥 Export Excel", data=buffer.getvalue(), file_name=f"Status_{selected_reg}.xlsx")
 
-                html_table = df_final.to_html(escape=False, index=False).replace("\\n", "<br>").replace("\n", "<br>")
-
-                styled_table = f"""
-                <style>
-                    .my-custom-table {{ width: 100%; border-collapse: collapse; font-size: 11px !important; font-family: sans-serif; }}
-                    .my-custom-table th {{ background-color: #f0f2f6; text-align: left; padding: 6px !important; border: 1px solid #dee2e6; }}
-                    .my-custom-table td {{ padding: 4px !important; line-height: 1.2 !important; border: 1px solid #dee2e6; vertical-align: middle; text-align: center; }}
-                </style>
-                <div class="my-custom-table">
-                    {html_table.replace('class="dataframe"', 'class="my-custom-table"')}
-                </div>
-                """
-                st.components.v1.html(styled_table, height=500, scrolling=True)
+                # Tampilkan Tabel Data Utama Streamlit
+                st.dataframe(
+                    df_final, 
+                    use_container_width=True, 
+                    hide_index=True,
+                    column_config={
+                        "TBO (H/C/M)": st.column_config.TextColumn(help="Time Between Overhaul (Hours / Cycles / Months)"),
+                        "TSN/CSN/DSN": st.column_config.TextColumn(help="Time Since New / Cycles Since New / Days Since New"),
+                        "Current Status": st.column_config.TextColumn(help="Current Time Since Overhaul (TSO / CSO / DSO)"),
+                        "Remaining": st.column_config.TextColumn(help="Remaining Life Limits")
+                    }
+                )
             else:
-                st.info("Belum ada data komponen.")
+                st.info("Belum ada data komponen aktif yang terpasang di pesawat ini.")
             conn.close()
 
     except Exception as e:
