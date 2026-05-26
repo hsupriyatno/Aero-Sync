@@ -144,7 +144,11 @@ def init_db():
         install_af_cycles INTEGER,
         tsn_at_install REAL,      -- TSN komponen saat baru ditempel
         csn_at_install INTEGER,   -- CSN komponen saat baru ditempel
-    
+        tso_at_install REAL,      -- TSO komponen saat baru ditempel
+        cso_at_install INTEGER,   -- CSO komponen saat baru ditempel
+        dsn_at_install INTEGER,   -- DSN komponen saat baru ditempel (Jika ada)
+        dso_at_install INTEGER,   -- DSO komponen saat baru ditempel (Jika ada)
+
         status TEXT DEFAULT 'INSTALLED',
         FOREIGN KEY (ac_reg) REFERENCES catalog (ac_reg))''')
 
@@ -629,3 +633,101 @@ def get_rotable_tat_summary():
         return pd.DataFrame(), pd.DataFrame()
     finally:
         conn.close()
+
+def init_optimized_database():
+    conn = sqlite3.connect('aero_synch.db')
+    curr = conn.cursor()
+    
+    # 1. MASTER SERIAL NUMBER (Pusat data hidup komponen)
+    curr.execute('''CREATE TABLE IF NOT EXISTS master_serial_number (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        part_number TEXT, 
+        serial_number TEXT,
+        tsn REAL DEFAULT 0.0, csn INTEGER DEFAULT 0,
+        tso REAL DEFAULT 0.0, cso INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'SERVICEABLE',         -- SERVICEABLE, UNSERVICEABLE, INSTALLED
+        current_location TEXT DEFAULT 'MAIN STORES',-- MAIN STORES, REPAIR SHOP, PK-OCG
+        date_registered TEXT,
+        UNIQUE(part_number, serial_number)
+    )''')
+
+    # 2. INSTALLED COMPONENTS (Hanya mencatat komponen yang sedang aktif di pesawat)
+    curr.execute('''CREATE TABLE IF NOT EXISTS installed_components (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ac_reg TEXT, 
+        component_name TEXT,
+        position TEXT, 
+        part_number TEXT,
+        serial_number TEXT,
+        install_date TEXT,
+        install_af_hours REAL,
+        install_af_cycles INTEGER,
+        tsn_at_install REAL,      
+        csn_at_install INTEGER,   
+        tso_at_install REAL,      
+        cso_at_install INTEGER,
+        UNIQUE(ac_reg, position), -- Mencegah dua komponen dipasang di posisi yang sama
+        FOREIGN KEY (part_number, serial_number) REFERENCES master_serial_number(part_number, serial_number)
+    )''')
+
+    # =========================================================================
+    # ⚡ AUTOMATIC TRIGGERS (VERSI PERBAIKAN SINKRONISASI LOKASI GUDANG)
+    # =========================================================================
+
+    # TRIGGER A: Jika komponen DIPASANG di pesawat lewat maintenance_entry.py
+    curr.execute('''
+    CREATE TRIGGER IF NOT EXISTS tx_component_installed
+    AFTER INSERT ON installed_components
+    BEGIN
+        UPDATE master_serial_number 
+        SET status = 'INSTALLED',
+            current_location = NEW.ac_reg,
+            location = NEW.ac_reg          -- Pastikan kolom 'location' ikut berubah mengikuti registrasi pesawat
+        WHERE part_number = NEW.part_number AND serial_number = NEW.serial_number;
+    END;
+    ''')
+
+    # TRIGGER B: Jika komponen DICOPOT (Replacement) lewat maintenance_entry.py
+    curr.execute('''
+    CREATE TRIGGER IF NOT EXISTS tx_component_removed
+    AFTER DELETE ON installed_components
+    BEGIN
+        UPDATE master_serial_number 
+        SET status = 'UNSERVICEABLE',
+            current_location = 'HO Store',  -- Diubah dari 'MAIN STORES' menjadi 'HO Store' sesuai kebutuhan Bapak
+            location = 'HO Store'           -- Kolom 'location' ikut dikembalikan ke HO Store agar terbaca di Part Catalog
+        WHERE part_number = OLD.part_number AND serial_number = OLD.serial_number;
+    END;
+    ''')
+
+    conn.commit()
+    conn.close()
+
+def get_component_status_report():
+    """Fungsi untuk menghitung otomatis TSN/CSN komponen aktif berdasarkan jam terbang aktual pesawat"""
+    # Sesuaikan dengan fungsi koneksi database yang sudah Bapak buat sebelumnya (misal: create_connection())
+    conn = sqlite3.connect('aero_synch.db') 
+    
+    query = """
+        SELECT 
+            ic.ac_reg AS [Aircraft Reg],
+            ic.component_name AS [Component Name],
+            ic.position AS [Position],
+            ic.part_number AS [Part Number],
+            ic.serial_number AS [Serial Number],
+            -- Rumus Otomatis: TSN Saat Pasang + (Jam Terbang Pesawat Saat Ini - Jam Pesawat Saat Pasang)
+            (ic.tsn_at_install + (IFNULL(curr.total_af_hours, ic.install_af_hours) - ic.install_af_hours)) AS [Current TSN],
+            -- Rumus Otomatis untuk Cycle
+            (ic.csn_at_install + (IFNULL(curr.total_landings, ic.install_af_cycles) - ic.install_af_cycles)) AS [Current CSN],
+            ic.install_date AS [Install Date]
+        FROM installed_components ic
+        LEFT JOIN (
+            -- Mengambil total aktual hours & landings pesawat saat ini dari tabel utilization (Sesuaikan nama tabel Anda)
+            SELECT ac_reg, SUM(flight_hours) as total_af_hours, SUM(landings) as total_landings 
+            FROM aml_utilization GROUP BY ac_reg
+        ) curr ON ic.ac_reg = curr.ac_reg
+    """
+    
+    df = pd.read_sql(query, conn)
+    conn.close()
+    return df
